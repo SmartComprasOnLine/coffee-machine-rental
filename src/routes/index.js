@@ -1,10 +1,35 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const coffeeAgentController = require('../controllers/coffeeAgentController');
 const spreadsheetController = require('../controllers/spreadsheetController');
 const Machine = require('../models/Machine');
 const Product = require('../models/Product');
 
 const router = express.Router();
+
+// Health check route (will be accessible at /api/health)
+router.get('/health', (req, res) => {
+  try {
+    // Check MongoDB connection
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error('MongoDB not connected');
+    }
+    res.json({ 
+      status: 'ok', 
+      timestamp: new Date().toISOString(),
+      services: {
+        mongodb: 'connected',
+        api: 'running'
+      }
+    });
+  } catch (error) {
+    res.status(503).json({ 
+      status: 'error', 
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
 // Webhook routes
 router.post('/webhook/coffee', coffeeAgentController.handleWebhook.bind(coffeeAgentController));
@@ -39,11 +64,6 @@ router.get('/machines/:machineName/products', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
-});
-
-// Health check route
-router.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 module.exports = router;
