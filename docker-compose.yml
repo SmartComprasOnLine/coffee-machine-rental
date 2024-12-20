@@ -29,6 +29,10 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    labels:
+      - easypanel.template=nodejs
+      - easypanel.proxy.port=3000
+      - easypanel.proxy.websocket=true
 
   mongodb:
     container_name: coffee-rental-mongodb
