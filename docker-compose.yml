@@ -6,7 +6,8 @@ services:
       - ./nginx:/etc/nginx/conf.d
       - nginx_logs:/var/log/nginx
     depends_on:
-      - app
+      app:
+        condition: service_healthy
     networks:
       - app-network
     ports:
@@ -14,9 +15,9 @@ services:
     restart: unless-stopped
     mem_limit: 64m
     healthcheck:
-      test: ["CMD", "nginx", "-t"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80"]
+      interval: 10s
+      timeout: 5s
       retries: 3
 
   app:
@@ -31,16 +32,18 @@ services:
     expose:
       - "3000"
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     networks:
       - app-network
     restart: unless-stopped
     mem_limit: 256m
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
+      interval: 10s
+      timeout: 5s
       retries: 3
+      start_period: 15s
 
   mongodb:
     container_name: coffee-rental-mongodb
@@ -53,10 +56,11 @@ services:
     mem_limit: 256m
     command: ["--wiredTigerCacheSizeGB", "0.25"]
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 30s
-      timeout: 10s
+      test: mongosh --eval "db.adminCommand('ping')"
+      interval: 10s
+      timeout: 5s
       retries: 3
+      start_period: 15s
 
 networks:
   app-network:
