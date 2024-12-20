@@ -5,6 +5,7 @@ services:
     volumes:
       - ./nginx:/etc/nginx/conf.d
       - nginx_logs:/var/log/nginx
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       app:
         condition: service_healthy
@@ -12,10 +13,11 @@ services:
       - app-network
     ports:
       - "80:80"
+      - "443:443"
     restart: unless-stopped
     mem_limit: 64m
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
       interval: 10s
       timeout: 5s
       retries: 3
