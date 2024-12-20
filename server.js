@@ -28,11 +28,22 @@ app.use(express.json({
         if (req.originalUrl.includes('/webhook')) {
             req.rawBody = buf.toString();
         }
-    }
+    },
+    limit: '50mb'
 }));
 
 // Routes
-app.use('/api', routes);
+app.use('/', routes);
+
+// Error handling for 404
+app.use((req, res) => {
+    console.log(`Route not found: ${req.method}:${req.originalUrl}`);
+    res.status(404).json({
+        message: `Route ${req.method}:${req.originalUrl} not found`,
+        error: 'Not Found',
+        statusCode: 404
+    });
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {

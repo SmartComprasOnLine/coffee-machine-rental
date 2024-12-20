@@ -15,4 +15,18 @@ router.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Debug route to log all registered routes
+router.get('/routes', (req, res) => {
+    const routes = [];
+    router.stack.forEach((middleware) => {
+        if (middleware.route) {
+            routes.push({
+                path: middleware.route.path,
+                methods: Object.keys(middleware.route.methods)
+            });
+        }
+    });
+    res.json(routes);
+});
+
 module.exports = router;
