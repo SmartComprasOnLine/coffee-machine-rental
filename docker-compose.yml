@@ -1,6 +1,5 @@
 services:
   app:
-    container_name: coffee-rental-app
     build:
       context: .
       dockerfile: Dockerfile
@@ -12,45 +11,29 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      mongodb:
-        condition: service_healthy
+      - mongodb
     networks:
       - app-network
     restart: unless-stopped
-    mem_limit: 256m
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 15s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   mongodb:
-    container_name: coffee-rental-mongodb
     image: mongo:latest
     volumes:
       - mongodb_data:/data/db
     networks:
       - app-network
     restart: unless-stopped
-    mem_limit: 256m
     command: ["--wiredTigerCacheSizeGB", "0.25"]
     healthcheck:
       test: mongosh --eval "db.adminCommand('ping')"
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 15s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
 networks:
   app-network:
