@@ -13,7 +13,7 @@ class CoffeeAgentController {
       const webhookData = Array.isArray(req.body) ? req.body[0] : req.body;
       console.log('Received webhook data:', webhookData);
 
-      const messageData = webhookData?.body?.data;
+      const messageData = webhookData?.data;
       if (!messageData) {
         return res.status(200).json({ message: 'No message data received' });
       }
@@ -25,27 +25,34 @@ class CoffeeAgentController {
 
       if (messageType === 'conversation') {
         text = messageData.message?.conversation;
+        console.log('Received text message:', text);
       } else if (messageType === 'audioMessage') {
-        // Get audio base64 and transcribe using Whisper
-        mediaBase64 = messageData.message?.audioMessage?.base64;
+        console.log('Processing audio message...');
+        mediaBase64 = messageData.message?.base64;
+        
         if (mediaBase64) {
           try {
+            console.log('Attempting to transcribe audio...');
             text = await openaiService.transcribeAudio(mediaBase64);
+            console.log('Audio transcription result:', text);
           } catch (error) {
             console.error('Error transcribing audio:', error);
             text = "Desculpe, não consegui processar o áudio. Poderia enviar sua mensagem em texto?";
           }
         } else {
+          console.log('No base64 audio data found in message');
           text = "Por favor, envie sua mensagem em texto para que eu possa ajudá-lo melhor.";
         }
       } else if (messageType === 'imageMessage') {
-        // Get image base64 and analyze using OpenAI Vision
-        mediaBase64 = messageData.message?.imageMessage?.base64;
+        console.log('Processing image message...');
+        mediaBase64 = messageData.message?.base64;
         const caption = messageData.message?.imageMessage?.caption;
         
         if (mediaBase64) {
           try {
+            console.log('Attempting to analyze image...');
             const imageDescription = await openaiService.analyzeImage(mediaBase64);
+            console.log('Image analysis result:', imageDescription);
             text = caption ? 
               `${caption}\n\nSobre a imagem que você enviou: ${imageDescription}` :
               `Sobre a imagem que você enviou: ${imageDescription}`;
@@ -54,6 +61,7 @@ class CoffeeAgentController {
             text = caption || "Desculpe, não consegui analisar a imagem. Como posso ajudar?";
           }
         } else {
+          console.log('No base64 image data found in message');
           text = caption || "Recebi sua imagem. Como posso ajudar?";
         }
       }
@@ -68,7 +76,7 @@ class CoffeeAgentController {
         instanceId, 
         pushName,
         messageType,
-        mediaUrl 
+        hasMediaBase64: !!mediaBase64
       });
 
       if (!text) {
@@ -79,6 +87,7 @@ class CoffeeAgentController {
       console.log('Detected intent:', intent);
 
       let response = await this.generateResponse(intent, text);
+      console.log('Generated response:', response);
 
       await evolutionApi.sendMessage(instanceId, from, response.message);
 
