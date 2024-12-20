@@ -27,7 +27,7 @@ class OpenAIService {
       // Create read stream and transcribe
       const transcription = await this.openai.audio.transcriptions.create({
         file: fs.createReadStream(tempFilePath),
-        model: "whisper-1", // Whisper model is fixed as it's specifically for audio
+        model: "whisper-1",
         language: "pt"
       });
 
@@ -49,7 +49,7 @@ class OpenAIService {
       console.log('Starting image analysis...');
       
       const response = await this.openai.chat.completions.create({
-        model: this.model,
+        model: "gpt-4-vision-preview",
         messages: [
           {
             role: "user",
@@ -76,6 +76,60 @@ class OpenAIService {
       console.error('Error analyzing image:', error);
       throw new Error(`Failed to analyze image: ${error.message}`);
     }
+  }
+
+  async generateResponse(prompt, context) {
+    try {
+      console.log('Generating response with context...');
+
+      // Prepare messages array with context
+      const messages = context.messages || [];
+
+      // Add the new prompt
+      messages.push({
+        role: "user",
+        content: prompt
+      });
+
+      const response = await this.openai.chat.completions.create({
+        model: this.model,
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 500,
+        frequency_penalty: 0.5,
+        presence_penalty: 0.3
+      });
+
+      console.log('Response generated successfully');
+      return response.choices[0].message.content;
+    } catch (error) {
+      console.error('Error generating response:', error);
+      throw new Error(`Failed to generate response: ${error.message}`);
+    }
+  }
+
+  async generatePrompt(intent, context) {
+    const basePrompt = "Você é a Júlia, assistente digital do Grupo Souza Café. ";
+    let specificPrompt = "";
+
+    switch (intent) {
+      case 'GREETING':
+        specificPrompt = "Gere uma saudação amigável e profissional, adaptada ao histórico da conversa.";
+        break;
+      case 'MACHINE_PRICE_INQUIRY':
+        specificPrompt = "Explique os benefícios e características da máquina recomendada, focando em resolver as necessidades específicas mencionadas no histórico.";
+        break;
+      case 'PRODUCT_INQUIRY':
+        specificPrompt = "Apresente os produtos compatíveis, destacando combinações populares e benefícios baseados no histórico da conversa.";
+        break;
+      case 'CONTRACT_INQUIRY':
+        specificPrompt = "Explique os termos do contrato de forma clara e amigável, abordando preocupações específicas mencionadas no histórico.";
+        break;
+      default:
+        specificPrompt = "Mantenha a conversa focada em ajudar o cliente a encontrar a melhor solução para suas necessidades.";
+    }
+
+    return basePrompt + specificPrompt;
   }
 }
 
