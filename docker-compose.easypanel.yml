@@ -3,10 +3,7 @@ services:
     container_name: coffee-rental-nginx
     image: nginx:alpine
     volumes:
-      - type: bind
-        source: ./nginx.conf
-        target: /etc/nginx/conf.d/default.conf
-        read_only: true
+      - ./nginx:/etc/nginx/conf.d
     depends_on:
       - app
     networks:
