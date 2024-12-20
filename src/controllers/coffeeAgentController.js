@@ -17,6 +17,7 @@ class CoffeeAgentController {
       const webhookData = Array.isArray(req.body) ? req.body[0] : req.body;
       console.log('Received webhook data:', webhookData);
 
+      // Extract message details from Evolution API webhook format
       const messageData = webhookData?.data;
       if (!messageData) {
         return res.status(200).json({ message: 'No message data received' });
@@ -92,6 +93,7 @@ class CoffeeAgentController {
       let response = await this.generateResponse(intent, text);
       console.log('Generated response:', response);
 
+      // Send response using Evolution API
       await evolutionApi.sendMessage(this.instanceId, from, response.message);
 
       if (response.mediaUrls && response.mediaUrls.length > 0) {

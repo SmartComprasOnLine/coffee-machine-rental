@@ -8,17 +8,17 @@ class EvolutionApiService {
 
   async sendMessage(instanceId, to, message) {
     try {
-      const url = `${this.baseUrl}/message/sendText/${instanceId}`;
+      const url = `${this.baseUrl}/message/text/${instanceId}`;
       const data = {
         number: to,
-        options: {
-          delay: 1200,
-          presence: "composing"
-        },
-        textMessage: {
-          text: message
-        }
+        textMessage: message
       };
+
+      console.log('Sending message:', {
+        url,
+        number: to,
+        message
+      });
 
       const response = await axios.post(url, data, {
         headers: {
@@ -37,18 +37,20 @@ class EvolutionApiService {
 
   async sendMedia(instanceId, to, mediaUrl) {
     try {
-      const url = `${this.baseUrl}/message/sendMedia/${instanceId}`;
+      const url = `${this.baseUrl}/message/media/${instanceId}`;
       const data = {
         number: to,
-        options: {
-          delay: 1200,
-          presence: "composing"
-        },
         mediaMessage: {
           mediatype: this.determineMediaType(mediaUrl),
           media: mediaUrl
         }
       };
+
+      console.log('Sending media:', {
+        url,
+        number: to,
+        mediatype: this.determineMediaType(mediaUrl)
+      });
 
       const response = await axios.post(url, data, {
         headers: {
@@ -81,13 +83,9 @@ class EvolutionApiService {
 
   async sendTemplate(instanceId, to, template, language = 'pt_BR') {
     try {
-      const url = `${this.baseUrl}/message/sendTemplate/${instanceId}`;
+      const url = `${this.baseUrl}/message/template/${instanceId}`;
       const data = {
         number: to,
-        options: {
-          delay: 1200,
-          presence: "composing"
-        },
         template: {
           name: template,
           language: {
@@ -95,6 +93,12 @@ class EvolutionApiService {
           }
         }
       };
+
+      console.log('Sending template:', {
+        url,
+        number: to,
+        template
+      });
 
       const response = await axios.post(url, data, {
         headers: {
@@ -113,13 +117,9 @@ class EvolutionApiService {
 
   async sendButtons(instanceId, to, message, buttons) {
     try {
-      const url = `${this.baseUrl}/message/sendButtons/${instanceId}`;
+      const url = `${this.baseUrl}/message/buttons/${instanceId}`;
       const data = {
         number: to,
-        options: {
-          delay: 1200,
-          presence: "composing"
-        },
         buttonMessage: {
           title: "Opções disponíveis",
           description: message,
@@ -129,6 +129,13 @@ class EvolutionApiService {
           }))
         }
       };
+
+      console.log('Sending buttons:', {
+        url,
+        number: to,
+        message,
+        buttons: buttons.length
+      });
 
       const response = await axios.post(url, data, {
         headers: {
@@ -147,13 +154,9 @@ class EvolutionApiService {
 
   async sendList(instanceId, to, message, sections) {
     try {
-      const url = `${this.baseUrl}/message/sendList/${instanceId}`;
+      const url = `${this.baseUrl}/message/list/${instanceId}`;
       const data = {
         number: to,
-        options: {
-          delay: 1200,
-          presence: "composing"
-        },
         listMessage: {
           title: "Menu de opções",
           description: message,
@@ -168,6 +171,13 @@ class EvolutionApiService {
           }))
         }
       };
+
+      console.log('Sending list:', {
+        url,
+        number: to,
+        message,
+        sections: sections.length
+      });
 
       const response = await axios.post(url, data, {
         headers: {
