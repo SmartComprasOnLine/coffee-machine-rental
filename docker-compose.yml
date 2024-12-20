@@ -8,10 +8,15 @@ services:
       - app
     networks:
       - app-network
-    expose:
-      - 80
+    ports:
+      - "80:80"
     restart: unless-stopped
     mem_limit: 64m
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   app:
     container_name: coffee-rental-app
@@ -26,10 +31,13 @@ services:
       - mongodb
     networks:
       - app-network
-    expose:
-      - 3000
     restart: unless-stopped
     mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   mongodb:
     container_name: coffee-rental-mongodb
@@ -41,6 +49,11 @@ services:
     restart: unless-stopped
     mem_limit: 256m
     command: ["--wiredTigerCacheSizeGB", "0.25"]
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   app-network:
