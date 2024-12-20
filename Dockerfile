@@ -4,18 +4,25 @@ FROM node:18-alpine
 # Install curl and network tools for debugging
 RUN apk add --no-cache curl iputils
 
-# Create app directory
+# Create app directory and ensure proper permissions
 WORKDIR /usr/src/app
+RUN chown node:node /usr/src/app
+
+# Switch to non-root user
+USER node
 
 # Install app dependencies
-COPY package*.json ./
+COPY --chown=node:node package*.json ./
 
 # Install dependencies with production only
 ENV NODE_ENV=production
 RUN npm install --production --no-audit
 
 # Bundle app source
-COPY . .
+COPY --chown=node:node . .
+
+# Create temp directory with proper permissions
+RUN mkdir -p /usr/src/app/temp && chown -R node:node /usr/src/app/temp
 
 # Expose port
 EXPOSE 3000
