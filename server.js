@@ -35,30 +35,20 @@ app.use(express.json({
 // Routes
 app.use('/', routes);
 
-// Error handling for 404
-app.use((req, res) => {
-    console.log(`Route not found: ${req.method}:${req.originalUrl}`);
-    res.status(404).json({
-        message: `Route ${req.method}:${req.originalUrl} not found`,
-        error: 'Not Found',
-        statusCode: 404
-    });
-});
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error('Error:', err);
-    res.status(500).json({
-        error: 'Internal Server Error',
-        message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
-    });
-});
-
 // Start server
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
     console.log('Environment:', process.env.NODE_ENV);
     console.log('MongoDB URI:', process.env.MONGODB_URI?.replace(/\/\/[^:]+:[^@]+@/, '//***:***@') || 'mongodb://mongodb:27017/coffee-rental');
+    
+    // Log all registered routes
+    console.log('\nRegistered Routes:');
+    app._router.stack.forEach(middleware => {
+        if (middleware.route) {
+            const methods = Object.keys(middleware.route.methods).join(', ').toUpperCase();
+            console.log(`${methods}: ${middleware.route.path}`);
+        }
+    });
 });
 
 // Handle uncaught exceptions

@@ -4,19 +4,17 @@ const spreadsheetController = require('../controllers/spreadsheetController');
 
 const router = express.Router();
 
-// Coffee Agent Webhook route
-router.post('/webhook/coffee', coffeeAgentController.handleWebhook.bind(coffeeAgentController));
-
-// Spreadsheet Webhook route
-router.post('/webhook/spreadsheet', spreadsheetController.handleWebhook.bind(spreadsheetController));
-
-// Health check route
-router.get('/health', (req, res) => {
+// Base API routes
+router.get('/api/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Debug route to log all registered routes
-router.get('/routes', (req, res) => {
+// Webhook routes
+router.post('/api/webhook/coffee', coffeeAgentController.handleWebhook.bind(coffeeAgentController));
+router.post('/api/webhook/spreadsheet', spreadsheetController.handleWebhook.bind(spreadsheetController));
+
+// Debug route to list all registered routes
+router.get('/api/routes', (req, res) => {
     const routes = [];
     router.stack.forEach((middleware) => {
         if (middleware.route) {
@@ -27,6 +25,16 @@ router.get('/routes', (req, res) => {
         }
     });
     res.json(routes);
+});
+
+// Error handling for 404
+router.use((req, res) => {
+    console.log(`Route not found: ${req.method}:${req.originalUrl}`);
+    res.status(404).json({
+        message: `Route ${req.method}:${req.originalUrl} not found`,
+        error: 'Not Found',
+        statusCode: 404
+    });
 });
 
 module.exports = router;
