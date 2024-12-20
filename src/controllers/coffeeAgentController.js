@@ -8,6 +8,10 @@ const Product = require('../models/Product');
 const Customer = require('../models/Customer');
 
 class CoffeeAgentController {
+  constructor() {
+    this.instanceId = process.env.EVOLUTION_INSTANCE;
+  }
+
   async handleWebhook(req, res) {
     try {
       const webhookData = Array.isArray(req.body) ? req.body[0] : req.body;
@@ -67,13 +71,12 @@ class CoffeeAgentController {
       }
 
       const from = messageData.key?.remoteJid;
-      const instanceId = messageData.instanceId;
       const pushName = messageData.pushName;
 
       console.log('Extracted message details:', { 
         text, 
         from, 
-        instanceId, 
+        instanceId: this.instanceId,
         pushName,
         messageType,
         hasMediaBase64: !!mediaBase64
@@ -89,11 +92,11 @@ class CoffeeAgentController {
       let response = await this.generateResponse(intent, text);
       console.log('Generated response:', response);
 
-      await evolutionApi.sendMessage(instanceId, from, response.message);
+      await evolutionApi.sendMessage(this.instanceId, from, response.message);
 
       if (response.mediaUrls && response.mediaUrls.length > 0) {
         for (const mediaUrl of response.mediaUrls) {
-          await evolutionApi.sendMedia(instanceId, from, mediaUrl);
+          await evolutionApi.sendMedia(this.instanceId, from, mediaUrl);
         }
       }
 
