@@ -2,6 +2,8 @@ const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const Machine = require('../models/Machine');
+const Product = require('../models/Product');
 
 class OpenAIService {
   constructor() {
@@ -30,7 +32,7 @@ class OpenAIService {
       // Create read stream and transcribe
       const transcription = await this.openai.audio.transcriptions.create({
         file: fs.createReadStream(tempFilePath),
-        model: "whisper-1", // Whisper is the only model for audio transcription
+        model: "whisper-1",
         language: "pt"
       });
 
@@ -85,14 +87,43 @@ class OpenAIService {
     try {
       console.log('Generating response with context using model:', this.model);
 
-      // Prepare messages array with context
-      const messages = context.messages || [];
+      // Get available machines and products from database
+      const machines = await Machine.find({ availableForRent: true, stock: { $gt: 0 } });
+      const products = await Product.find({ availableForSale: true, stock: { $gt: 0 } });
 
-      // Add the new prompt
-      messages.push({
-        role: "user",
-        content: prompt
-      });
+      // Format database information
+      const databaseContext = {
+        machines: machines.map(m => ({
+          name: m.name,
+          price: m.rentalPrice,
+          description: m.description,
+          supportedProducts: m.supportedProducts,
+          dimensions: m.dimensions,
+          paymentMethod: m.paymentMethod,
+          contractDuration: m.contractDuration
+        })),
+        products: products.map(p => ({
+          name: p.name,
+          price: p.price,
+          category: p.category,
+          compatibleMachines: p.compatibleMachines,
+          description: p.description,
+          dosage: p.dosage
+        }))
+      };
+
+      // Prepare messages array with context and database information
+      const messages = [
+        {
+          role: "system",
+          content: `Você é a Júlia, assistente digital do Grupo Souza Café. Use estas informações atualizadas do banco de dados para suas respostas:\n${JSON.stringify(databaseContext, null, 2)}`
+        },
+        ...(context.messages || []),
+        {
+          role: "user",
+          content: prompt
+        }
+      ];
 
       const response = await this.openai.chat.completions.create({
         model: this.model,
@@ -112,28 +143,45 @@ class OpenAIService {
   }
 
   async generatePrompt(intent, context) {
-    const basePrompt = "Você é a Júlia, assistente digital do Grupo Souza Café. ";
-    let specificPrompt = "";
+    try {
+      // Get available machines and products from database
+      const machines = await Machine.find({ availableForRent: true, stock: { $gt: 0 } });
+      const products = await Product.find({ availableForSale: true, stock: { $gt: 0 } });
 
-    switch (intent) {
-      case 'GREETING':
-        specificPrompt = "Gere uma saudação amigável e profissional, adaptada ao histórico da conversa.";
-        break;
-      case 'MACHINE_PRICE_INQUIRY':
-        specificPrompt = "Explique os benefícios e características da máquina recomendada, focando em resolver as necessidades específicas mencionadas no histórico.";
-        break;
-      case 'PRODUCT_INQUIRY':
-        specificPrompt = "Apresente os produtos compatíveis, destacando combinações populares e benefícios baseados no histórico da conversa.";
-        break;
-      case 'CONTRACT_INQUIRY':
-        specificPrompt = "Explique os termos do contrato de forma clara e amigável, abordando preocupações específicas mencionadas no histórico.";
-        break;
-      default:
-        specificPrompt = "Mantenha a conversa focada em ajudar o cliente a encontrar a melhor solução para suas necessidades.";
+      const basePrompt = `
+        Você é a Júlia, assistente digital do Grupo Souza Café.
+        
+        Máquinas disponíveis:
+        ${machines.map(m => `- ${m.name}: R$ ${m.rentalPrice}/mês - ${m.description}`).join('\n')}
+        
+        Produtos disponíveis:
+        ${products.map(p => `- ${p.name}: R$ ${p.price} - ${p.description}`).join('\n')}
+      `;
+
+      let specificPrompt = "";
+      switch (intent) {
+        case 'GREETING':
+          specificPrompt = "Gere uma saudação amigável e profissional, mencionando nossa variedade de máquinas disponíveis.";
+          break;
+        case 'MACHINE_PRICE_INQUIRY':
+          specificPrompt = "Explique os benefícios e características das máquinas disponíveis, focando nos preços e condições atuais.";
+          break;
+        case 'PRODUCT_INQUIRY':
+          specificPrompt = "Apresente os produtos compatíveis disponíveis em estoque, destacando preços e benefícios.";
+          break;
+        case 'CONTRACT_INQUIRY':
+          specificPrompt = "Explique os termos do contrato, usando as informações das máquinas disponíveis como referência.";
+          break;
+        default:
+          specificPrompt = "Mantenha a conversa focada em ajudar o cliente a encontrar a melhor solução com nossas máquinas e produtos disponíveis.";
+      }
+
+      const response = await this.generateResponse(basePrompt + "\n" + specificPrompt, context);
+      return response;
+    } catch (error) {
+      console.error('Error generating prompt:', error);
+      throw new Error(`Failed to generate prompt: ${error.message}`);
     }
-
-    const response = await this.generateResponse(basePrompt + specificPrompt, context);
-    return response;
   }
 }
 
