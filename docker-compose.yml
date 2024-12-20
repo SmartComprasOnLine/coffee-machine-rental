@@ -11,6 +11,12 @@ services:
     expose:
       - 80
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
 
   app:
     container_name: coffee-rental-app
@@ -28,6 +34,12 @@ services:
     expose:
       - 3000
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
   mongodb:
     container_name: coffee-rental-mongodb
@@ -37,6 +49,13 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
 
 networks:
   app-network:
