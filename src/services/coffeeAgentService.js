@@ -1,155 +1,139 @@
-const { OpenAI } = require('openai');
-require('dotenv').config();
+const Machine = require('../models/Machine');
+const Product = require('../models/Product');
 
 class CoffeeAgentService {
-    constructor() {
-        this.openai = new OpenAI({
-            apiKey: process.env.OPENAI_API_KEY
-        });
-    }
+  constructor() {
+    this.persona = {
+      name: 'Júlia',
+      role: 'Assistente digital do Mateus do Grupo Souza Café',
+      specialization: 'Qualificação de leads, captação de informações e geração de interesse em máquinas de café'
+    };
+  }
 
-    async generateResponse(name, message, messageHistory = []) {
-        try {
-            console.log('Gerando resposta para:', {
-                name,
-                message,
-                historyLength: messageHistory.length
-            });
+  async handleInitialEngagement() {
+    return {
+      message: '*Oi, tudo bem?* Somos do Grupo Souza Café, e oferecemos máquinas de café ideais para empresas de todos os tamanhos. Para qual CEP você deseja receber uma cotação?',
+      requiresCEP: true
+    };
+  }
 
-            // Extract context from previous interactions
-            const contextInfo = this.extractContextInfo(messageHistory);
-            
-            // Check if it's the first message
-            const isFirstMessage = messageHistory.length === 1;
-
-            const systemPrompt = `
-            <assistant>
-                <persona>
-                    <name>Júlia</name>
-                    <role>Assistente digital do Mateus do Grupo Souza Café</role>
-                    <specialization>Qualificação de leads, captação de informações e geração de interesse em máquinas de café</specialization>
-                    <expertise>Especialista em vendas e negociação</expertise>
-                </persona>
-                <communication_style>
-                    <tone>Adaptar ao cliente (formal ou informal)</tone>
-                    <sales_techniques>Utilizar técnicas de persuasão para gerar conexão e valor</sales_techniques>
-                    <first_name_reference>Sempre usar o primeiro nome do cliente após mencionado</first_name_reference>
-                    <whatsapp_formatting>
-                        <bold>*Texto em negrito*</bold>
-                        <italic>_Texto em itálico_</italic>
-                    </whatsapp_formatting>
-                </communication_style>
-                ${contextInfo ? `
-                <context>
-                    <customer>
-                        <name>${name}</name>
-                        <business_info>
-                            <cep>${contextInfo.cep || 'Não informado'}</cep>
-                            <business_type>${contextInfo.businessType || 'Não informado'}</business_type>
-                            <status>${contextInfo.status || 'LEAD'}</status>
-                        </business_info>
-                        <preferences>
-                            <interested_machines>${contextInfo.interestedMachines || 'Não informado'}</interested_machines>
-                            <desired_beverages>${contextInfo.desiredBeverages || 'Não informado'}</desired_beverages>
-                            <payment_method>${contextInfo.paymentMethod || 'UNDEFINED'}</payment_method>
-                        </preferences>
-                    </customer>
-                </context>` : ''}
-            </assistant>`;
-
-            // Initial message template
-            if (isFirstMessage) {
-                return "*Oi, tudo bem?* Somos do Grupo Souza Café, e oferecemos máquinas de café ideais para empresas de todos os tamanhos. Para qual CEP você deseja receber uma cotação?";
-            }
-
-            // Handle CEP validation
-            if (this.isCEPRequest(messageHistory)) {
-                const cep = this.extractCEP(message);
-                if (cep) {
-                    return `Obrigada! Para melhor atendê-lo, poderia me dizer qual o tipo do seu negócio? (Ex: escritório, café, restaurante, indústria)`;
-                } else {
-                    return `Por favor, me informe um CEP válido para que eu possa verificar a disponibilidade de máquinas na sua região.`;
-                }
-            }
-
-            const response = await this.openai.chat.completions.create({
-                model: process.env.OPENAI_MODEL,
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    ...messageHistory,
-                    { role: "user", content: message }
-                ],
-                temperature: 0.7
-            });
-
-            console.log('Resposta gerada:', {
-                status: 'sucesso',
-                content: response.choices[0].message.content
-            });
-
-            return response.choices[0].message.content;
-        } catch (error) {
-            console.error('Erro ao gerar resposta:', error);
-            throw error;
-        }
-    }
-
-    extractContextInfo(messageHistory) {
-        if (!messageHistory || messageHistory.length === 0) return null;
-
-        const context = {
-            cep: '',
-            businessType: '',
-            status: 'LEAD',
-            interestedMachines: [],
-            desiredBeverages: [],
-            paymentMethod: 'UNDEFINED'
+  async getMachineRecommendation(requirements) {
+    try {
+      const query = { availableForRent: true, stock: { $gt: 0 } };
+      
+      if (requirements.maxPrice) {
+        query.rentalPrice = { $lte: requirements.maxPrice };
+      }
+      
+      if (requirements.beverageTypes) {
+        query.supportedProducts = { 
+          $regex: requirements.beverageTypes.join('|'), 
+          $options: 'i' 
         };
+      }
 
-        messageHistory.forEach(msg => {
-            const content = msg.content.toLowerCase();
-            
-            // Extract CEP
-            const cepMatch = content.match(/\d{5}-?\d{3}/);
-            if (cepMatch) {
-                context.cep = cepMatch[0];
-            }
+      const machines = await Machine.find(query).sort({ rentalPrice: 1 });
+      
+      if (!machines.length) {
+        return {
+          message: 'No momento não temos máquinas disponíveis com essas características específicas. Posso te apresentar outras opções?'
+        };
+      }
 
-            // Extract business type
-            if (content.includes('escritório') || content.includes('café') || 
-                content.includes('restaurante') || content.includes('indústria')) {
-                context.businessType = content;
-            }
+      const recommendedMachine = machines[0];
+      return this.formatMachineRecommendation(recommendedMachine);
+    } catch (error) {
+      console.error('Error in getMachineRecommendation:', error);
+      throw error;
+    }
+  }
 
-            // Extract machine interest
-            const machines = ['onix', 'jade', 'rubi'];
-            machines.forEach(machine => {
-                if (content.includes(machine) && !context.interestedMachines.includes(machine)) {
-                    context.interestedMachines.push(machine);
-                }
-            });
+  async getProductsForMachine(machineName) {
+    try {
+      const machine = await Machine.findOne({ name: machineName });
+      if (!machine) {
+        return {
+          message: 'Desculpe, não encontrei informações sobre esta máquina.'
+        };
+      }
 
-            // Extract payment preference
-            if (content.includes('macpay') || content.includes('pix')) {
-                context.paymentMethod = 'MACPAY';
-            } else if (content.includes('moeda') || content.includes('ficha')) {
-                context.paymentMethod = 'MANUAL';
-            }
+      const products = await Product.find({
+        compatibleMachines: { $regex: machineName, $options: 'i' },
+        availableForSale: true,
+        stock: { $gt: 0 }
+      });
+
+      return this.formatProductRecommendation(machine, products);
+    } catch (error) {
+      console.error('Error in getProductsForMachine:', error);
+      throw error;
+    }
+  }
+
+  formatMachineRecommendation(machine) {
+    return {
+      message: `*${machine.name}* - R$ ${machine.rentalPrice}/mês\n\n` +
+        `${machine.description}\n\n` +
+        `*Dimensões:*\n` +
+        `Altura: ${machine.dimensions.height}\n` +
+        `Largura: ${machine.dimensions.width}\n` +
+        `Profundidade: ${machine.dimensions.depth}\n` +
+        `Peso: ${machine.dimensions.weight}\n\n` +
+        `*Produtos suportados:*\n${machine.supportedProducts}\n\n` +
+        (machine.image ? `${machine.image}\n\n` : '') +
+        (machine.videos ? `Veja o vídeo da máquina: ${machine.videos}\n\n` : '') +
+        `*Forma de pagamento:* ${machine.paymentMethod}\n` +
+        `*Contrato:* ${machine.contractDuration}\n\n` +
+        `Gostaria de ver mais detalhes ou agendar uma visita?`
+    };
+  }
+
+  formatProductRecommendation(machine, products) {
+    let message = `*Produtos compatíveis com ${machine.name}:*\n\n`;
+    
+    const categories = {
+      COFFEE: 'Cafés',
+      CHOCOLATE: 'Chocolates',
+      CAPPUCCINO: 'Cappuccinos',
+      TEA: 'Chás',
+      MILK: 'Leites',
+      SUPPLIES: 'Suprimentos'
+    };
+
+    for (const category in categories) {
+      const categoryProducts = products.filter(p => p.category === category);
+      if (categoryProducts.length) {
+        message += `*${categories[category]}:*\n`;
+        categoryProducts.forEach(product => {
+          message += `• ${product.name} - R$ ${product.price.toFixed(2)}\n`;
+          if (product.dosage?.ml80) {
+            message += `  (Rende aproximadamente ${product.dosage.ml80.doses} doses)\n`;
+          }
         });
-
-        return context;
+        message += '\n';
+      }
     }
 
-    isCEPRequest(messageHistory) {
-        if (messageHistory.length !== 1) return false;
-        const lastMessage = messageHistory[0].content.toLowerCase();
-        return lastMessage.includes('cep') || lastMessage.includes('cotação');
-    }
+    return { message };
+  }
 
-    extractCEP(message) {
-        const cepMatch = message.match(/\d{5}-?\d{3}/);
-        return cepMatch ? cepMatch[0] : null;
-    }
+  async handleContractInquiry() {
+    return {
+      message: '*Contrato de Locação:*\n\n' +
+        '• Duração: 12 meses\n' +
+        '• Pagamento: Mensal por boleto\n' +
+        '• Multa por cancelamento: 3 meses do valor do aluguel\n' +
+        '• Suporte técnico incluso\n' +
+        '• Manutenção preventiva trimestral\n\n' +
+        '*Documentos necessários:*\n' +
+        '• Contrato Social\n' +
+        '• CNPJ\n' +
+        '• Cartão CNPJ\n' +
+        '• RG ou CNH do sócio-proprietário\n' +
+        '• Comprovante de endereço do estabelecimento\n\n' +
+        'Posso te ajudar a iniciar o processo agora mesmo!'
+    };
+  }
 }
 
 module.exports = new CoffeeAgentService();

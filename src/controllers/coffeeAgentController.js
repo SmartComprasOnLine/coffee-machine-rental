@@ -1,211 +1,251 @@
 const coffeeAgentService = require('../services/coffeeAgentService');
+const intentService = require('../services/intentService');
 const evolutionApi = require('../services/evolutionApi');
-const Customer = require('../models/Customer');
+const spreadsheetService = require('../services/spreadsheetService');
 const Machine = require('../models/Machine');
+const Product = require('../models/Product');
+const Customer = require('../models/Customer');
 
 class CoffeeAgentController {
-    constructor() {
-        this.pendingMessages = new Map();
-        this.messageTimeouts = new Map();
-    }
+  async handleWebhook(req, res) {
+    try {
+      const { text, from, instanceId } = req.body;
+      console.log('Received webhook:', { text, from, instanceId });
 
-    async handleWebhook(req, res) {
-        try {
-            const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      // Skip if no text message
+      if (!text) {
+        return res.status(200).json({ message: 'No text message received' });
+      }
 
-            if (!body.data || !body.data.message || !body.data.key) {
-                console.error('Invalid webhook data:', body);
-                return res.status(400).json({ error: 'Missing required fields' });
-            }
+      // Analyze intent
+      const intent = intentService.analyzeIntent(text);
+      console.log('Detected intent:', intent);
 
-            const messageData = body.data;
-            const number = messageData.key.remoteJid.replace('@s.whatsapp.net', '');
-            
-            let message;
-            if (messageData.message.conversation) {
-                message = messageData.message.conversation;
-            } else if (messageData.message.extendedTextMessage) {
-                message = messageData.message.extendedTextMessage.text;
-            } else if (messageData.message.messageContextInfo && messageData.message.conversation) {
-                message = messageData.message.conversation;
-            } else {
-                console.error('Unknown message format:', messageData.message);
-                return res.status(400).json({ error: 'Unsupported message format' });
-            }
+      // Get response based on intent
+      let response = await this.generateResponse(intent, text);
 
-            console.log('Extracted message:', message);
+      // Send response via Evolution API
+      await evolutionApi.sendMessage(instanceId, from, response.message);
 
-            const name = messageData.pushName || `Cliente ${number.slice(-4)}`;
-
-            // Find or create customer
-            let customer = await Customer.findOne({ whatsappNumber: number });
-            if (!customer) {
-                customer = await Customer.create({
-                    name,
-                    whatsappNumber: number,
-                    businessInfo: {
-                        status: 'LEAD'
-                    }
-                });
-            }
-
-            const customerId = customer._id.toString();
-
-            // Add customer message to history
-            await customer.addToMessageHistory('user', message);
-
-            // Clear any existing timeout for this customer
-            if (this.messageTimeouts.has(customerId)) {
-                clearTimeout(this.messageTimeouts.get(customerId));
-            }
-
-            // Get or initialize pending messages for this customer
-            const customerMessages = this.pendingMessages.get(customerId) || [];
-            customerMessages.push(message);
-            this.pendingMessages.set(customerId, customerMessages);
-
-            // Set a new timeout
-            const timeout = setTimeout(async () => {
-                try {
-                    const messages = this.pendingMessages.get(customerId) || [];
-                    this.pendingMessages.delete(customerId);
-                    this.messageTimeouts.delete(customerId);
-
-                    await this.processMessages(messages.join('\n'), customer);
-                } catch (error) {
-                    console.error('Error processing messages:', error);
-                    const errorMessage = 'Desculpe, tive um problema ao processar sua mensagem. Por favor, tente novamente em alguns instantes.';
-                    await evolutionApi.sendText(customer.whatsappNumber, errorMessage);
-                    await customer.addToMessageHistory('assistant', errorMessage);
-                }
-            }, 10000); // 10 seconds
-
-            this.messageTimeouts.set(customerId, timeout);
-
-            return res.json({ message: 'Message queued for processing' });
-        } catch (error) {
-            console.error('Error in webhook:', error);
-            res.status(500).json({ error: 'Internal server error' });
+      // If media URLs are included, send them
+      if (response.mediaUrls && response.mediaUrls.length > 0) {
+        for (const mediaUrl of response.mediaUrls) {
+          await evolutionApi.sendMedia(instanceId, from, mediaUrl);
         }
+      }
+
+      return res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('Error in handleWebhook:', error);
+      return res.status(500).json({ error: error.message });
     }
+  }
 
-    async processMessages(message, customer) {
-        try {
-            customer.lastInteraction = new Date();
-            await customer.save();
+  async generateResponse(intent, text) {
+    try {
+      switch (intent) {
+        case 'GREETING':
+          return await coffeeAgentService.handleInitialEngagement();
 
-            const messageHistory = customer.getMessageHistory();
-
-            // Process CEP if it's the first interaction
-            if (messageHistory.length === 1) {
-                const cepMatch = message.match(/\d{5}-?\d{3}/);
-                if (cepMatch) {
-                    customer.businessInfo.cep = cepMatch[0];
-                    await customer.save();
-                }
-            }
-
-            // Process business type if CEP was provided
-            if (customer.businessInfo.cep && !customer.businessInfo.businessType) {
-                customer.businessInfo.businessType = this.extractBusinessType(message);
-                if (customer.businessInfo.businessType) {
-                    await customer.save();
-                }
-            }
-
-            // Generate response using the coffee agent service
-            const response = await coffeeAgentService.generateResponse(
-                customer.name,
-                message,
-                messageHistory
-            );
-
-            // Send response
-            await evolutionApi.sendText(customer.whatsappNumber, response);
-            await customer.addToMessageHistory('assistant', response);
-
-            // Update customer status based on interaction
-            await this.updateCustomerStatus(customer, message);
-
-        } catch (error) {
-            console.error('Error processing messages:', error);
-            const errorMessage = 'Desculpe, tive um problema ao processar sua mensagem. Por favor, tente novamente em alguns instantes.';
-            await evolutionApi.sendText(customer.whatsappNumber, errorMessage);
-            await customer.addToMessageHistory('assistant', errorMessage);
-        }
-    }
-
-    extractBusinessType(message) {
-        const businessTypes = {
-            'escritório': 'ESCRITÓRIO',
-            'café': 'CAFÉ',
-            'restaurante': 'RESTAURANTE',
-            'indústria': 'INDÚSTRIA',
-            'industria': 'INDÚSTRIA',
-            'hotel': 'HOTEL',
-            'loja': 'LOJA',
-            'consultório': 'CONSULTÓRIO',
-            'consultorio': 'CONSULTÓRIO',
-            'clínica': 'CLÍNICA',
-            'clinica': 'CLÍNICA'
-        };
-
-        const messageLower = message.toLowerCase();
-        for (const [key, value] of Object.entries(businessTypes)) {
-            if (messageLower.includes(key)) {
-                return value;
-            }
+        case 'MACHINE_PRICE_INQUIRY': {
+          const requirements = this.extractRequirements(text);
+          return await coffeeAgentService.getMachineRecommendation(requirements);
         }
 
-        return null;
-    }
-
-    async updateCustomerStatus(customer, message) {
-        const messageLower = message.toLowerCase();
-
-        // Update status based on message content and current status
-        switch (customer.businessInfo.status) {
-            case 'LEAD':
-                if (customer.businessInfo.cep && customer.businessInfo.businessType) {
-                    customer.businessInfo.status = 'QUALIFIED';
-                }
-                break;
-            case 'QUALIFIED':
-                if (messageLower.includes('preço') || messageLower.includes('valor') || 
-                    messageLower.includes('orçamento') || messageLower.includes('orcamento')) {
-                    customer.businessInfo.status = 'NEGOTIATING';
-                }
-                break;
-            case 'NEGOTIATING':
-                if (messageLower.includes('contrato') || messageLower.includes('fechar') || 
-                    messageLower.includes('aceito') || messageLower.includes('acordo')) {
-                    customer.businessInfo.status = 'CONTRACT_SENT';
-                }
-                break;
+        case 'PRODUCT_INQUIRY': {
+          const machineName = this.extractMachineName(text);
+          if (machineName) {
+            return await coffeeAgentService.getProductsForMachine(machineName);
+          }
+          return {
+            message: 'Para qual máquina você gostaria de saber sobre os produtos? Temos várias opções disponíveis.'
+          };
         }
 
-        // Update machine preferences
-        const machines = ['onix', 'jade', 'rubi'];
-        machines.forEach(async (machine) => {
-            if (messageLower.includes(machine)) {
-                const machineDoc = await Machine.findOne({ 
-                    model: { $regex: new RegExp(machine, 'i') }
-                });
-                if (machineDoc && !customer.preferences.interestedMachines.includes(machineDoc._id)) {
-                    customer.preferences.interestedMachines.push(machineDoc._id);
-                }
-            }
-        });
+        case 'CONTRACT_GENERAL_INQUIRY':
+        case 'CONTRACT_DOCUMENTS':
+        case 'CLOSING_INTENT':
+          return await coffeeAgentService.handleContractInquiry();
 
-        // Update payment preferences
-        if (messageLower.includes('macpay') || messageLower.includes('pix')) {
-            customer.preferences.paymentMethod = 'MACPAY';
-        } else if (messageLower.includes('moeda') || messageLower.includes('ficha')) {
-            customer.preferences.paymentMethod = 'MANUAL';
+        case 'SUPPORT_GENERAL_INQUIRY':
+        case 'SUPPORT_RESPONSE_TIME':
+          return {
+            message: '*Nosso suporte técnico é rápido e eficiente!* 🚀\n\n' +
+              '• Atendimento em até 24 horas\n' +
+              '• Suporte remoto imediato\n' +
+              '• Manutenção preventiva trimestral\n' +
+              '• Troca de máquina se necessário\n\n' +
+              'Tudo isso já está incluído no valor da locação! 😊'
+          };
+
+        case 'PAYMENT_GENERAL_INQUIRY':
+          return {
+            message: '*Sobre os pagamentos:*\n\n' +
+              '• Locação: Boleto mensal com 7 dias para pagamento\n' +
+              '• Produtos: Boleto com prazo de 15 dias (pedidos acima de R$180)\n' +
+              '• Entrega em até 3 dias úteis\n\n' +
+              'Quer saber mais algum detalhe específico?'
+          };
+
+        default: {
+          const template = intentService.getResponseTemplate(intent);
+          return {
+            message: template.message,
+            requiresFollowUp: template.requiresFollowUp
+          };
         }
-
-        await customer.save();
+      }
+    } catch (error) {
+      console.error('Error in generateResponse:', error);
+      throw error;
     }
+  }
+
+  extractRequirements(text) {
+    const requirements = {
+      beverageTypes: [],
+      maxPrice: null
+    };
+
+    // Extract beverage types
+    if (text.includes('café')) requirements.beverageTypes.push('café');
+    if (text.includes('chocolate')) requirements.beverageTypes.push('chocolate');
+    if (text.includes('cappuccino')) requirements.beverageTypes.push('cappuccino');
+    if (text.includes('chá')) requirements.beverageTypes.push('chá');
+
+    // Extract price range
+    const priceMatch = text.match(/R?\$?\s*(\d+)/);
+    if (priceMatch) {
+      requirements.maxPrice = parseInt(priceMatch[1]);
+    }
+
+    return requirements;
+  }
+
+  extractMachineName(text) {
+    const machineNames = ['Rubi', 'Onix', 'Jade'];
+    for (const name of machineNames) {
+      if (text.toLowerCase().includes(name.toLowerCase())) {
+        return name;
+      }
+    }
+    return null;
+  }
+
+  async handleSpreadsheetUpdate(req, res) {
+    try {
+      const data = req.body;
+      console.log('Received spreadsheet data:', data);
+
+      // Update machine data
+      if (data.Planilha === 'MÁQUINAS ALUGAR') {
+        await this.updateMachineData(data);
+      }
+      // Update product data
+      else if (data.Planilha === 'PRODUTOS') {
+        await this.updateProductData(data);
+      }
+
+      return res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('Error in handleSpreadsheetUpdate:', error);
+      return res.status(500).json({ error: error.message });
+    }
+  }
+
+  async updateMachineData(data) {
+    try {
+      const machineData = {
+        name: data.MÁQUINA,
+        availableForRent: data['DISPONÍVEL PARA ALUGUEL'] === 'SIM',
+        stock: parseInt(data.ESTOQUE) || 0,
+        acceptsPixPayment: data['ACEITA PIX COM QR CODE PARA LIBERAR AS BEBIDAS'] === 'SIM',
+        image: data['IMAGEM / FOTO'],
+        supportedProducts: data['PRODUTOS SUPORTADOS'],
+        videos: data.VIDEOS,
+        photoGallery: data['CATALOGO DE FOTOS'],
+        installationVideos: data['VIDEOS DE INSTALAÇÕES'],
+        customerFeedbackVideo: data['VIDEO DE FEEDBACK DO CLIENTE'],
+        rentalPrice: parseFloat(data.LOCAÇÃO) || 0,
+        paymentMethod: data['FORMA DE PAGAMENTO'],
+        rentalDiscount: parseFloat(data['DESCONTO LOCAÇÃO']) || 0,
+        description: data.DESCRICAO,
+        dimensions: {
+          height: data.ALTURA,
+          width: data.LARGURA,
+          depth: data.PROFUNDIDADE,
+          weight: data.PESO
+        },
+        unsupportedProducts: data['INSUMOS NÃO SUPORTADOS'],
+        contractDuration: data['CONTRATO FIDELIDADE'],
+        cancellationFee: data['MULTA CANCELAMENTO DE CONTRATO']
+      };
+
+      await Machine.findOneAndUpdate(
+        { name: data.MÁQUINA },
+        machineData,
+        { upsert: true, new: true }
+      );
+
+      console.log(`Updated/created machine: ${data.MÁQUINA}`);
+    } catch (error) {
+      console.error('Error updating machine data:', error);
+      throw error;
+    }
+  }
+
+  async updateProductData(data) {
+    try {
+      const productData = {
+        name: data.NOME,
+        price: parseFloat(data.PREÇO) || 0,
+        compatibleMachines: data['MAQUINAS COMPATIVEIS'],
+        dosage: {
+          ml50: {
+            grams: parseFloat(data['GRAMATURA 50ML']) || 0,
+            doses: parseInt(data['DOSE 50 ML']) || 0,
+            pricePerDose: parseFloat(data['PREÇO DOSE/50ML']) || 0
+          },
+          ml80: {
+            grams: parseFloat(data['GRAMATURA 80ML']) || 0,
+            doses: parseInt(data['DOSE 80ML']) || 0,
+            pricePerDose: parseFloat(data['PREÇO DOSE/80ML']) || 0
+          },
+          ml120: {
+            grams: parseFloat(data['GRAMATURA 120ML']) || 0,
+            doses: parseInt(data['DOSE 120ML']) || 0,
+            pricePerDose: parseFloat(data['PREÇO DOSE/ 120ML']) || 0
+          }
+        },
+        description: data.DESCRIÇÃO,
+        image: data.IMAGEM,
+        availableForSale: data['DISPONÍVEL PARA VENDA'] === 'SIM',
+        stock: parseInt(data.ESTOQUE) || 0,
+        category: this.determineProductCategory(data.NOME)
+      };
+
+      await Product.findOneAndUpdate(
+        { name: data.NOME },
+        productData,
+        { upsert: true, new: true }
+      );
+
+      console.log(`Updated/created product: ${data.NOME}`);
+    } catch (error) {
+      console.error('Error updating product data:', error);
+      throw error;
+    }
+  }
+
+  determineProductCategory(name) {
+    name = name.toLowerCase();
+    if (name.includes('café')) return 'COFFEE';
+    if (name.includes('chocolate')) return 'CHOCOLATE';
+    if (name.includes('cappuccino')) return 'CAPPUCCINO';
+    if (name.includes('chá')) return 'TEA';
+    if (name.includes('leite')) return 'MILK';
+    return 'SUPPLIES';
+  }
 }
 
 module.exports = new CoffeeAgentController();

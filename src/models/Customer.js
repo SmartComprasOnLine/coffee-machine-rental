@@ -1,85 +1,91 @@
 const mongoose = require('mongoose');
 
-const customerSchema = new mongoose.Schema({
-    whatsappNumber: {
+const CustomerSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true
+  },
+  cnpj: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  cpf: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  phone: {
+    type: String,
+    required: true
+  },
+  address: {
+    street: String,
+    number: String,
+    complement: String,
+    neighborhood: String,
+    city: String,
+    state: String,
+    zipCode: String
+  },
+  businessType: {
+    type: String,
+    enum: ['MEI', 'COMPANY', 'INDIVIDUAL'],
+    required: true
+  },
+  rentals: [{
+    machine: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Machine'
+    },
+    startDate: Date,
+    endDate: Date,
+    monthlyPrice: Number,
+    status: {
+      type: String,
+      enum: ['ACTIVE', 'CANCELLED', 'COMPLETED'],
+      default: 'ACTIVE'
+    },
+    accessories: [{
+      type: {
         type: String,
-        required: true,
-        unique: true
-    },
-    name: {
-        type: String,
-        required: true
-    },
-    businessInfo: {
-        cep: String,
-        businessType: String,
-        cnpj: String,
-        companyName: String,
-        status: {
-            type: String,
-            enum: ['LEAD', 'QUALIFIED', 'NEGOTIATING', 'CONTRACT_SENT', 'ACTIVE', 'INACTIVE'],
-            default: 'LEAD'
-        }
-    },
-    messageHistory: [{
-        role: {
-            type: String,
-            enum: ['user', 'assistant'],
-            required: true
-        },
-        content: {
-            type: String,
-            required: true
-        },
-        timestamp: {
-            type: Date,
-            default: Date.now
-        }
+        enum: ['CABINET', 'COIN_VALIDATOR', 'PIX_PAYMENT', 'STABILIZER', 'TRANSFORMER', 'CUP_WARMER']
+      },
+      monthlyPrice: Number
     }],
-    preferences: {
-        interestedMachines: [{
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Machine'
-        }],
-        desiredBeverages: [String],
-        budget: {
-            min: Number,
-            max: Number
-        },
-        paymentMethod: {
-            type: String,
-            enum: ['MACPAY', 'MANUAL', 'UNDEFINED'],
-            default: 'UNDEFINED'
-        }
-    },
-    lastInteraction: {
-        type: Date,
-        default: Date.now
-    },
-    notes: [{
-        content: String,
-        timestamp: {
-            type: Date,
-            default: Date.now
-        }
+    contractNumber: String,
+    installationDate: Date,
+    cancellationDate: Date,
+    cancellationReason: String,
+    technicalVisits: [{
+      date: Date,
+      type: {
+        type: String,
+        enum: ['PREVENTIVE', 'CORRECTIVE']
+      },
+      description: String,
+      technician: String
     }]
+  }],
+  documents: {
+    contractSocial: String,
+    cnpjCard: String,
+    ownerDocument: String,
+    addressProof: String
+  },
+  status: {
+    type: String,
+    enum: ['PENDING', 'ACTIVE', 'INACTIVE', 'BLOCKED'],
+    default: 'PENDING'
+  },
+  notes: String
 }, {
-    timestamps: true
+  timestamps: true
 });
 
-customerSchema.methods.addToMessageHistory = function(role, content) {
-    this.messageHistory.push({ role, content });
-    this.lastInteraction = new Date();
-    return this.save();
-};
-
-customerSchema.methods.getMessageHistory = function(limit = 10) {
-    return this.messageHistory
-        .slice(-limit)
-        .map(msg => ({
-            role: msg.role,
-            content: msg.content
-        }));
-};
-
-module.exports = mongoose.model('Customer', customerSchema);
+module.exports = mongoose.model('Customer', CustomerSchema);
