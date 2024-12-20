@@ -1,30 +1,4 @@
 services:
-  nginx:
-    container_name: coffee-rental-nginx
-    image: nginx:alpine
-    volumes:
-      - ./nginx:/etc/nginx/conf.d
-      - nginx_logs:/var/log/nginx
-    depends_on:
-      app:
-        condition: service_healthy
-    networks:
-      - app-network
-    ports:
-      - "80:80"
-    restart: unless-stopped
-    mem_limit: 64m
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   app:
     container_name: coffee-rental-app
     build:
@@ -41,9 +15,7 @@ services:
       mongodb:
         condition: service_healthy
     networks:
-      app-network:
-        aliases:
-          - app
+      - app-network
     restart: unless-stopped
     mem_limit: 256m
     healthcheck:
@@ -64,9 +36,7 @@ services:
     volumes:
       - mongodb_data:/data/db
     networks:
-      app-network:
-        aliases:
-          - mongodb
+      - app-network
     restart: unless-stopped
     mem_limit: 256m
     command: ["--wiredTigerCacheSizeGB", "0.25"]
@@ -84,13 +54,8 @@ services:
 
 networks:
   app-network:
-    name: coffee-rental-network
     driver: bridge
 
 volumes:
   mongodb_data:
-    name: coffee-rental-mongodb-data
-    driver: local
-  nginx_logs:
-    name: coffee-rental-nginx-logs
     driver: local
