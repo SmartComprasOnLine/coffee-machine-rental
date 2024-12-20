@@ -9,8 +9,16 @@ const Customer = require('../models/Customer');
 class CoffeeAgentController {
   async handleWebhook(req, res) {
     try {
-      const { text, from, instanceId } = req.body;
-      console.log('Received webhook:', { text, from, instanceId });
+      // Evolution API webhook format
+      const { key, message } = req.body;
+      console.log('Received webhook:', req.body);
+
+      // Extract message details
+      const text = message?.text?.body;
+      const from = message?.from;
+      const instanceId = key?.remoteJid;
+
+      console.log('Extracted message details:', { text, from, instanceId });
 
       // Skip if no text message
       if (!text) {
