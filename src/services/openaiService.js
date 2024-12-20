@@ -8,6 +8,7 @@ class OpenAIService {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY
     });
+    this.model = process.env.OPENAI_MODEL || 'gpt-4';
   }
 
   async transcribeAudio(audioBase64) {
@@ -26,7 +27,7 @@ class OpenAIService {
       // Create read stream and transcribe
       const transcription = await this.openai.audio.transcriptions.create({
         file: fs.createReadStream(tempFilePath),
-        model: "whisper-1",
+        model: "whisper-1", // Whisper model is fixed as it's specifically for audio
         language: "pt"
       });
 
@@ -48,7 +49,7 @@ class OpenAIService {
       console.log('Starting image analysis...');
       
       const response = await this.openai.chat.completions.create({
-        model: "gpt-4-vision-preview",
+        model: this.model,
         messages: [
           {
             role: "user",
