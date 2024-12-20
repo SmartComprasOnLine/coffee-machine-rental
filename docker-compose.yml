@@ -19,6 +19,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+    environment:
+      - NGINX_HOST=saas-souza.9uc1cu.easypanel.host
+      - NGINX_PORT=80
 
   app:
     container_name: coffee-rental-app
@@ -29,13 +32,16 @@ services:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://mongodb:27017/coffee-rental
       - PORT=3000
+      - HOST=0.0.0.0
     expose:
       - "3000"
     depends_on:
       mongodb:
         condition: service_healthy
     networks:
-      - app-network
+      app-network:
+        aliases:
+          - app
     restart: unless-stopped
     mem_limit: 256m
     healthcheck:
@@ -51,7 +57,9 @@ services:
     volumes:
       - mongodb_data:/data/db
     networks:
-      - app-network
+      app-network:
+        aliases:
+          - mongodb
     restart: unless-stopped
     mem_limit: 256m
     command: ["--wiredTigerCacheSizeGB", "0.25"]
@@ -64,10 +72,13 @@ services:
 
 networks:
   app-network:
+    name: coffee-rental-network
     driver: bridge
 
 volumes:
   mongodb_data:
+    name: coffee-rental-mongodb-data
     driver: local
   nginx_logs:
+    name: coffee-rental-nginx-logs
     driver: local
