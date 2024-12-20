@@ -1,0 +1,19 @@
+refactor: simplify project structure
+
+- Remove unnecessary services:
+  * intentService
+  * analyticsService
+  * gamificationService
+  * timezoneService
+- Remove Routine model
+- Remove test scripts
+- Simplify User model
+- Centralize intelligence in OpenAI service
+- Streamline reminder service
+- Update controllers for simplified architecture
+
+This commit simplifies the project by:
+1. Removing complex, predefined logic in favor of AI-driven processing
+2. Streamlining the data model to essential fields
+3. Centralizing natural language processing in OpenAI
+4. Maintaining only core functionality for routines and reminders
