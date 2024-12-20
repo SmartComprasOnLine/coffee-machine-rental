@@ -7,16 +7,32 @@ const routes = require('./src/routes');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://mongodb:27017/coffee-rental', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-})
-.then(() => console.log('Connected to MongoDB'))
-.catch(err => {
-    console.error('MongoDB connection error:', err);
-    process.exit(1);
-});
+// Function to connect to MongoDB with retries
+const connectWithRetry = async () => {
+    const maxRetries = 5;
+    let currentTry = 1;
+
+    while (currentTry <= maxRetries) {
+        try {
+            await mongoose.connect(process.env.MONGODB_URI || 'mongodb://mongodb:27017/coffee-rental', {
+                useNewUrlParser: true,
+                useUnifiedTopology: true,
+                serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+            });
+            console.log('Connected to MongoDB');
+            return true;
+        } catch (err) {
+            console.error(`MongoDB connection attempt ${currentTry} failed:`, err.message);
+            if (currentTry === maxRetries) {
+                console.error('Max retries reached. Exiting...');
+                process.exit(1);
+            }
+            currentTry++;
+            // Wait for 5 seconds before retrying
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+    }
+};
 
 // Middleware
 app.use(cors());
@@ -55,21 +71,33 @@ app.use((err, req, res, next) => {
     });
 });
 
-// Start server
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-    console.log('Environment:', process.env.NODE_ENV);
-    console.log('MongoDB URI:', process.env.MONGODB_URI?.replace(/\/\/[^:]+:[^@]+@/, '//***:***@') || 'mongodb://mongodb:27017/coffee-rental');
-    
-    // Log all registered routes
-    console.log('\nRegistered Routes:');
-    app._router.stack.forEach(middleware => {
-        if (middleware.route) {
-            const methods = Object.keys(middleware.route.methods).join(', ').toUpperCase();
-            console.log(`${methods}: ${middleware.route.path}`);
-        }
-    });
-});
+// Start server after connecting to MongoDB
+const startServer = async () => {
+    try {
+        await connectWithRetry();
+        
+        app.listen(port, () => {
+            console.log(`Server running on port ${port}`);
+            console.log('Environment:', process.env.NODE_ENV);
+            console.log('MongoDB URI:', process.env.MONGODB_URI?.replace(/\/\/[^:]+:[^@]+@/, '//***:***@') || 'mongodb://mongodb:27017/coffee-rental');
+            
+            // Log all registered routes
+            console.log('\nRegistered Routes:');
+            app._router.stack.forEach(middleware => {
+                if (middleware.route) {
+                    const methods = Object.keys(middleware.route.methods).join(', ').toUpperCase();
+                    console.log(`${methods}: ${middleware.route.path}`);
+                }
+            });
+        });
+    } catch (error) {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+    }
+};
+
+// Start the server
+startServer();
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
