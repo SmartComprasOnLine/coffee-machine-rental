@@ -4,6 +4,59 @@ class EvolutionApiService {
   constructor() {
     this.baseUrl = process.env.EVOLUTION_API_URL;
     this.apiKey = process.env.EVOLUTION_API_KEY;
+    this.instanceId = process.env.EVOLUTION_INSTANCE;
+    this.initInstance();
+  }
+
+  async initInstance() {
+    try {
+      console.log('Initializing Evolution API instance...');
+      const url = `${this.baseUrl}/instance/create`;
+      const data = {
+        instanceName: this.instanceId,
+        qrcode: true,
+        number: "558199725668",
+        token: this.apiKey
+      };
+
+      const response = await axios.post(url, data, {
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': this.apiKey
+        }
+      });
+
+      console.log('Instance initialized:', response.data);
+      return response.data;
+    } catch (error) {
+      if (error.response?.status === 409) {
+        console.log('Instance already exists, connecting...');
+        await this.connectInstance();
+      } else {
+        console.error('Error initializing instance:', error.response?.data || error.message);
+        throw error;
+      }
+    }
+  }
+
+  async connectInstance() {
+    try {
+      console.log('Connecting to instance...');
+      const url = `${this.baseUrl}/instance/connect/${this.instanceId}`;
+      
+      const response = await axios.post(url, {}, {
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': this.apiKey
+        }
+      });
+
+      console.log('Instance connected:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error connecting to instance:', error.response?.data || error.message);
+      throw error;
+    }
   }
 
   async sendMessage(instanceId, to, message) {
@@ -30,6 +83,11 @@ class EvolutionApiService {
       console.log('Message sent successfully:', response.data);
       return response.data;
     } catch (error) {
+      if (error.response?.status === 404) {
+        console.log('Instance not found, reinitializing...');
+        await this.initInstance();
+        return this.sendMessage(instanceId, to, message);
+      }
       console.error('Error sending message:', error.response?.data || error.message);
       throw error;
     }
@@ -60,6 +118,11 @@ class EvolutionApiService {
       console.log('Media sent successfully:', response.data);
       return response.data;
     } catch (error) {
+      if (error.response?.status === 404) {
+        console.log('Instance not found, reinitializing...');
+        await this.initInstance();
+        return this.sendMedia(instanceId, to, mediaUrl);
+      }
       console.error('Error sending media:', error.response?.data || error.message);
       throw error;
     }
@@ -76,7 +139,6 @@ class EvolutionApiService {
     if (videoExtensions.includes(extension)) return 'video';
     if (documentExtensions.includes(extension)) return 'document';
     
-    // Default to image if can't determine
     return 'image';
   }
 
@@ -107,6 +169,11 @@ class EvolutionApiService {
       console.log('Template sent successfully:', response.data);
       return response.data;
     } catch (error) {
+      if (error.response?.status === 404) {
+        console.log('Instance not found, reinitializing...');
+        await this.initInstance();
+        return this.sendTemplate(instanceId, to, template, language);
+      }
       console.error('Error sending template:', error.response?.data || error.message);
       throw error;
     }
@@ -141,6 +208,11 @@ class EvolutionApiService {
       console.log('Buttons sent successfully:', response.data);
       return response.data;
     } catch (error) {
+      if (error.response?.status === 404) {
+        console.log('Instance not found, reinitializing...');
+        await this.initInstance();
+        return this.sendButtons(instanceId, to, message, buttons);
+      }
       console.error('Error sending buttons:', error.response?.data || error.message);
       throw error;
     }
@@ -180,6 +252,11 @@ class EvolutionApiService {
       console.log('List sent successfully:', response.data);
       return response.data;
     } catch (error) {
+      if (error.response?.status === 404) {
+        console.log('Instance not found, reinitializing...');
+        await this.initInstance();
+        return this.sendList(instanceId, to, message, sections);
+      }
       console.error('Error sending list:', error.response?.data || error.message);
       throw error;
     }
