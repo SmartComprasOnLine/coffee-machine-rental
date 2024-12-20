@@ -11,7 +11,7 @@ services:
       - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
       - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE}
     ports:
-      - "3000:3000"
+      - "3001:3000"
     depends_on:
       - mongodb
     networks:
