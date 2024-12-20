@@ -4,19 +4,15 @@ services:
   app:
     build: .
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://mongodb:27017/coffee-rental
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=gpt-4
+      - PORT=3000
     depends_on:
       - mongodb
-    volumes:
-      - .:/usr/src/app
-      - /usr/src/app/node_modules
     networks:
-      - coffee-network
+      - app-network
     restart: unless-stopped
 
   mongodb:
@@ -26,11 +22,11 @@ services:
     volumes:
       - mongodb_data:/data/db
     networks:
-      - coffee-network
+      - app-network
     restart: unless-stopped
 
 networks:
-  coffee-network:
+  app-network:
     driver: bridge
 
 volumes:
