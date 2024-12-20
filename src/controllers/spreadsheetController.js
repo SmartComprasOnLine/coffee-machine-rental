@@ -1,119 +1,117 @@
-const spreadsheetService = require('../services/spreadsheetService');
+const Machine = require('../models/Machine');
 
 class SpreadsheetController {
     async handleWebhook(req, res) {
         try {
-            const data = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+            console.log('Received webhook data:', JSON.stringify(req.body, null, 2));
 
-            console.log('\n=== WEBHOOK RECEBIDO ===');
-            console.log('Data/Hora:', new Date().toLocaleString('pt-BR'));
-            console.log('\nJSON Completo Recebido:');
-            console.log(JSON.stringify(data, null, 2));
-            console.log('\n======================\n');
-
-            // Validate spreadsheet data
-            try {
-                spreadsheetService.validateSpreadsheetData(data);
-            } catch (validationError) {
-                console.error('Erro na validação dos dados:', validationError.message);
+            const data = req.body;
+            
+            if (!data || !data.Planilha) {
                 return res.status(400).json({
-                    error: 'Erro na validação',
-                    details: validationError.message
+                    error: 'Bad Request',
+                    message: 'Invalid data format'
                 });
             }
 
-            // Process the spreadsheet data
-            const result = await spreadsheetService.processSpreadsheetData(data);
+            // Handle different spreadsheet types
+            switch (data.Planilha) {
+                case 'MÁQUINAS ALUGAR':
+                    await this.handleMachineData(data);
+                    break;
+                case 'MAQUINAS COMPRAR':
+                    await this.handlePurchaseMachineData(data);
+                    break;
+                case 'PRODUTOS':
+                    await this.handleProductData(data);
+                    break;
+                case 'COPOS ACUCAR E DESCALCIFICANTE':
+                    await this.handleSuppliesData(data);
+                    break;
+                case 'ACESSÓRIOS':
+                    await this.handleAccessoryData(data);
+                    break;
+                case 'Q&A':
+                    await this.handleQAData(data);
+                    break;
+                default:
+                    console.log(`Unknown spreadsheet type: ${data.Planilha}`);
+            }
 
-            return res.json({
-                success: true,
-                message: `Máquina ${result.machine.model} atualizada com sucesso`,
-                machine: {
-                    model: result.machine.model,
-                    status: result.machine.status,
-                    stock: result.machine.stock,
-                    monthlyRent: result.machine.pricing.monthlyRent
-                }
+            return res.status(200).json({
+                message: 'Data processed successfully',
+                spreadsheet: data.Planilha
             });
 
         } catch (error) {
-            console.error('Erro ao processar webhook da planilha:', error);
-            res.status(500).json({
-                error: 'Erro interno do servidor',
+            console.error('Error processing webhook:', error);
+            return res.status(500).json({
+                error: 'Internal Server Error',
                 message: error.message
             });
         }
     }
 
-    async getMachineUpdates(req, res) {
+    async handleMachineData(data) {
         try {
-            const Machine = require('../models/Machine');
-            const machines = await Machine.find({})
-                .select('model status stock pricing.monthlyRent updatedAt')
-                .sort('-updatedAt');
+            const machine = await Machine.findOneAndUpdate(
+                { name: data.MÁQUINA },
+                {
+                    name: data.MÁQUINA,
+                    availableForRent: data['DISPONÍVEL PARA ALUGUEL'] === 'SIM',
+                    stock: parseInt(data.ESTOQUE) || 0,
+                    acceptsPix: data['ACEITA PIX COM QR CODE PARA LIBERAR AS BEBIDAS'] === 'SIM',
+                    image: data['IMAGEM / FOTO'],
+                    supportedProducts: data['PRODUTOS SUPORTADOS'],
+                    videos: data.VIDEOS,
+                    photosCatalog: data['CATALOGO DE FOTOS'],
+                    installationVideos: data['VIDEOS DE INSTALAÇÕES'],
+                    feedbackVideos: data['VIDEO DE FEEDBACK DO CLIENTE'],
+                    rentalPrice: parseFloat(data.LOCAÇÃO) || 0,
+                    paymentMethod: data['FORMA DE PAGAMENTO'],
+                    rentalDiscount: parseFloat(data['DESCONTO LOCAÇÃO']) || 0,
+                    description: data.DESCRICAO,
+                    dimensions: {
+                        height: data.ALTURA,
+                        width: data.LARGURA,
+                        depth: data.PROFUNDIDADE,
+                        weight: data.PESO
+                    },
+                    unsupportedProducts: data['INSUMOS NÃO SUPORTADOS'],
+                    contractDuration: data['CONTRATO FIDELIDADE'],
+                    cancellationFee: data['MULTA CANCELAMENTO DE CONTRATO']
+                },
+                { upsert: true, new: true }
+            );
 
-            if (machines.length === 0) {
-                return res.json({
-                    lastUpdate: null,
-                    machines: []
-                });
-            }
-
-            // Get the most recent update timestamp
-            const lastUpdate = machines.reduce((latest, machine) => {
-                return machine.updatedAt > latest ? machine.updatedAt : latest;
-            }, machines[0].updatedAt);
-
-            res.json({
-                lastUpdate,
-                machines: machines.map(m => ({
-                    model: m.model,
-                    status: m.status,
-                    stock: m.stock,
-                    monthlyRent: m.pricing.monthlyRent,
-                    updatedAt: m.updatedAt
-                }))
-            });
+            console.log('Machine data updated:', machine);
+            return machine;
 
         } catch (error) {
-            console.error('Erro ao obter atualizações das máquinas:', error);
-            res.status(500).json({
-                error: 'Erro interno do servidor',
-                message: error.message
-            });
+            console.error('Error handling machine data:', error);
+            throw error;
         }
     }
 
-    async getMachineDetails(req, res) {
-        try {
-            const Machine = require('../models/Machine');
-            const machine = await Machine.findOne({ model: req.params.model });
+    // Implement other handlers as needed
+    async handlePurchaseMachineData(data) {
+        console.log('Processing purchase machine data:', data);
+    }
 
-            if (!machine) {
-                return res.status(404).json({
-                    error: 'Máquina não encontrada',
-                    message: `Nenhuma máquina encontrada com o modelo ${req.params.model}`
-                });
-            }
+    async handleProductData(data) {
+        console.log('Processing product data:', data);
+    }
 
-            res.json({
-                model: machine.model,
-                status: machine.status,
-                stock: machine.stock,
-                features: machine.features,
-                pricing: machine.pricing,
-                specifications: machine.specifications,
-                contract: machine.contract,
-                whatsappDescription: machine.getWhatsAppDescription()
-            });
+    async handleSuppliesData(data) {
+        console.log('Processing supplies data:', data);
+    }
 
-        } catch (error) {
-            console.error('Erro ao obter detalhes da máquina:', error);
-            res.status(500).json({
-                error: 'Erro interno do servidor',
-                message: error.message
-            });
-        }
+    async handleAccessoryData(data) {
+        console.log('Processing accessory data:', data);
+    }
+
+    async handleQAData(data) {
+        console.log('Processing Q&A data:', data);
     }
 }
 
