@@ -1,8 +1,6 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://mongodb:27017/coffee-rental
@@ -29,11 +27,6 @@ services:
       - app-network
     restart: unless-stopped
     command: ["--wiredTigerCacheSizeGB", "0.25"]
-    healthcheck:
-      test: mongosh --eval "db.adminCommand('ping')"
-      interval: 10s
-      timeout: 5s
-      retries: 3
 
 networks:
   app-network:
