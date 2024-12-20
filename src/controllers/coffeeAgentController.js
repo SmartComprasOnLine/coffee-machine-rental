@@ -87,6 +87,10 @@ class CoffeeAgentController {
         return res.status(200).json({ message: 'No text message received' });
       }
 
+      // Get conversation context
+      const context = await conversationService.getConversationContext(userId);
+      console.log('Conversation context:', context);
+
       // Add user message to conversation history
       await conversationService.addUserMessage(
         userId,
@@ -95,15 +99,17 @@ class CoffeeAgentController {
         mediaUrl
       );
 
-      // Get conversation context
-      const context = await conversationService.getConversationContext(userId);
-      console.log('Conversation context:', context);
-
-      // Generate response using context
-      const intent = intentService.analyzeIntent(text);
+      // Detect intent using AI
+      const intent = await intentService.analyzeIntent(text, context);
       console.log('Detected intent:', intent);
 
-      let response = await this.generateResponse(intent, text, context);
+      // Generate contextual response
+      let response;
+      if (intent === 'UNKNOWN') {
+        response = await intentService.generateContextualResponse(intent, text, context);
+      } else {
+        response = await this.generateResponse(intent, text, context);
+      }
       console.log('Generated response:', response);
 
       // Add assistant response to conversation history
@@ -146,43 +152,22 @@ class CoffeeAgentController {
           if (machineName) {
             return await coffeeAgentService.getProductsForMachine(machineName, context);
           }
-          return {
-            message: 'Para qual máquina você gostaria de saber sobre os produtos? Temos várias opções disponíveis.'
-          };
+          return await intentService.generateContextualResponse(intent, text, context);
         }
 
-        case 'CONTRACT_GENERAL_INQUIRY':
+        case 'CONTRACT_INQUIRY':
         case 'CONTRACT_DOCUMENTS':
         case 'CLOSING_INTENT':
           return await coffeeAgentService.handleContractInquiry(context);
 
-        case 'SUPPORT_GENERAL_INQUIRY':
-        case 'SUPPORT_RESPONSE_TIME':
-          return {
-            message: '*Nosso suporte técnico é rápido e eficiente!* 🚀\n\n' +
-              '• Atendimento em até 24 horas\n' +
-              '• Suporte remoto imediato\n' +
-              '• Manutenção preventiva trimestral\n' +
-              '• Troca de máquina se necessário\n\n' +
-              'Tudo isso já está incluído no valor da locação! 😊'
-          };
+        case 'SUPPORT_INQUIRY':
+        case 'PAYMENT_INQUIRY':
+        case 'PERSONAL_QUESTION':
+        case 'CEP_INFO':
+          return await intentService.generateContextualResponse(intent, text, context);
 
-        case 'PAYMENT_GENERAL_INQUIRY':
-          return {
-            message: '*Sobre os pagamentos:*\n\n' +
-              '• Locação: Boleto mensal com 7 dias para pagamento\n' +
-              '• Produtos: Boleto com prazo de 15 dias (pedidos acima de R$180)\n' +
-              '• Entrega em até 3 dias úteis\n\n' +
-              'Quer saber mais algum detalhe específico?'
-          };
-
-        default: {
-          const template = intentService.getResponseTemplate(intent);
-          return {
-            message: template.message,
-            requiresFollowUp: template.requiresFollowUp
-          };
-        }
+        default:
+          return await intentService.generateContextualResponse('UNKNOWN', text, context);
       }
     } catch (error) {
       console.error('Error in generateResponse:', error);
