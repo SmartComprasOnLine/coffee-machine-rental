@@ -1,6 +1,7 @@
 const coffeeAgentService = require('../services/coffeeAgentService');
 const intentService = require('../services/intentService');
 const evolutionApi = require('../services/evolutionApi');
+const openaiService = require('../services/openaiService');
 const spreadsheetService = require('../services/spreadsheetService');
 const Machine = require('../models/Machine');
 const Product = require('../models/Product');
@@ -12,7 +13,6 @@ class CoffeeAgentController {
       const webhookData = Array.isArray(req.body) ? req.body[0] : req.body;
       console.log('Received webhook data:', webhookData);
 
-      // Extract message details from Evolution API webhook format
       const messageData = webhookData?.body?.data;
       if (!messageData) {
         return res.status(200).json({ message: 'No message data received' });
@@ -21,16 +21,41 @@ class CoffeeAgentController {
       const messageType = messageData.messageType;
       let text;
       let mediaUrl;
+      let mediaBase64;
 
       if (messageType === 'conversation') {
         text = messageData.message?.conversation;
       } else if (messageType === 'audioMessage') {
-        // For audio messages, ask for text
-        text = "Por favor, envie sua mensagem em texto para que eu possa ajudá-lo melhor.";
+        // Get audio base64 and transcribe using Whisper
+        mediaBase64 = messageData.message?.audioMessage?.base64;
+        if (mediaBase64) {
+          try {
+            text = await openaiService.transcribeAudio(mediaBase64);
+          } catch (error) {
+            console.error('Error transcribing audio:', error);
+            text = "Desculpe, não consegui processar o áudio. Poderia enviar sua mensagem em texto?";
+          }
+        } else {
+          text = "Por favor, envie sua mensagem em texto para que eu possa ajudá-lo melhor.";
+        }
       } else if (messageType === 'imageMessage') {
-        // For image messages, get both URL and caption if present
-        mediaUrl = messageData.message?.imageMessage?.url;
-        text = messageData.message?.imageMessage?.caption || "Recebi sua imagem. Como posso ajudar?";
+        // Get image base64 and analyze using OpenAI Vision
+        mediaBase64 = messageData.message?.imageMessage?.base64;
+        const caption = messageData.message?.imageMessage?.caption;
+        
+        if (mediaBase64) {
+          try {
+            const imageDescription = await openaiService.analyzeImage(mediaBase64);
+            text = caption ? 
+              `${caption}\n\nSobre a imagem que você enviou: ${imageDescription}` :
+              `Sobre a imagem que você enviou: ${imageDescription}`;
+          } catch (error) {
+            console.error('Error analyzing image:', error);
+            text = caption || "Desculpe, não consegui analisar a imagem. Como posso ajudar?";
+          }
+        } else {
+          text = caption || "Recebi sua imagem. Como posso ajudar?";
+        }
       }
 
       const from = messageData.key?.remoteJid;
@@ -46,22 +71,17 @@ class CoffeeAgentController {
         mediaUrl 
       });
 
-      // Skip if no text message
       if (!text) {
         return res.status(200).json({ message: 'No text message received' });
       }
 
-      // Analyze intent
       const intent = intentService.analyzeIntent(text);
       console.log('Detected intent:', intent);
 
-      // Get response based on intent
       let response = await this.generateResponse(intent, text);
 
-      // Send response via Evolution API
       await evolutionApi.sendMessage(instanceId, from, response.message);
 
-      // If media URLs are included, send them
       if (response.mediaUrls && response.mediaUrls.length > 0) {
         for (const mediaUrl of response.mediaUrls) {
           await evolutionApi.sendMedia(instanceId, from, mediaUrl);
@@ -141,13 +161,11 @@ class CoffeeAgentController {
       maxPrice: null
     };
 
-    // Extract beverage types
     if (text.includes('café')) requirements.beverageTypes.push('café');
     if (text.includes('chocolate')) requirements.beverageTypes.push('chocolate');
     if (text.includes('cappuccino')) requirements.beverageTypes.push('cappuccino');
     if (text.includes('chá')) requirements.beverageTypes.push('chá');
 
-    // Extract price range
     const priceMatch = text.match(/R?\$?\s*(\d+)/);
     if (priceMatch) {
       requirements.maxPrice = parseInt(priceMatch[1]);
@@ -171,11 +189,9 @@ class CoffeeAgentController {
       const data = req.body;
       console.log('Received spreadsheet data:', data);
 
-      // Update machine data
       if (data.Planilha === 'MÁQUINAS ALUGAR') {
         await this.updateMachineData(data);
       }
-      // Update product data
       else if (data.Planilha === 'PRODUTOS') {
         await this.updateProductData(data);
       }
