@@ -8,7 +8,10 @@ class OpenAIService {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY
     });
-    this.model = process.env.OPENAI_MODEL || 'gpt-4';
+    this.model = process.env.OPENAI_MODEL;
+    if (!this.model) {
+      throw new Error('OPENAI_MODEL environment variable is required');
+    }
   }
 
   async transcribeAudio(audioBase64) {
@@ -27,7 +30,7 @@ class OpenAIService {
       // Create read stream and transcribe
       const transcription = await this.openai.audio.transcriptions.create({
         file: fs.createReadStream(tempFilePath),
-        model: "whisper-1",
+        model: "whisper-1", // Whisper is the only model for audio transcription
         language: "pt"
       });
 
@@ -49,7 +52,7 @@ class OpenAIService {
       console.log('Starting image analysis...');
       
       const response = await this.openai.chat.completions.create({
-        model: "gpt-4-vision-preview",
+        model: this.model,
         messages: [
           {
             role: "user",
@@ -80,7 +83,7 @@ class OpenAIService {
 
   async generateResponse(prompt, context) {
     try {
-      console.log('Generating response with context...');
+      console.log('Generating response with context using model:', this.model);
 
       // Prepare messages array with context
       const messages = context.messages || [];
@@ -129,7 +132,8 @@ class OpenAIService {
         specificPrompt = "Mantenha a conversa focada em ajudar o cliente a encontrar a melhor solução para suas necessidades.";
     }
 
-    return basePrompt + specificPrompt;
+    const response = await this.generateResponse(basePrompt + specificPrompt, context);
+    return response;
   }
 }
 
