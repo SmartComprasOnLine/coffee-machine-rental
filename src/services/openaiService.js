@@ -1,5 +1,5 @@
 const OpenAI = require('openai');
-const fs = require('fs').promises;
+const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
@@ -15,40 +15,28 @@ class OpenAIService {
       console.log('Starting audio transcription...');
       
       // Create temporary file
-      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'audio-'));
+      const tempDir = path.join(os.tmpdir(), 'audio-' + Date.now());
+      fs.mkdirSync(tempDir, { recursive: true });
       const tempFilePath = path.join(tempDir, 'audio.ogg');
       
-      // Convert base64 to buffer and write to file
-      const audioBuffer = Buffer.from(audioBase64, 'base64');
-      await fs.writeFile(tempFilePath, audioBuffer);
-      
+      // Write base64 to file
+      fs.writeFileSync(tempFilePath, Buffer.from(audioBase64, 'base64'));
       console.log('Audio file created at:', tempFilePath);
 
-      // Create a File object from the temporary file
-      const file = await fs.readFile(tempFilePath);
-      const blob = new Blob([file], { type: 'audio/ogg' });
-      const formData = new FormData();
-      formData.append('file', blob, 'audio.ogg');
-      formData.append('model', 'whisper-1');
-      formData.append('language', 'pt');
-
-      console.log('Sending request to OpenAI...');
-
-      // Transcribe audio
+      // Create read stream and transcribe
       const transcription = await this.openai.audio.transcriptions.create({
-        file: formData.get('file'),
+        file: fs.createReadStream(tempFilePath),
         model: "whisper-1",
-        language: "pt",
-        response_format: "text"
+        language: "pt"
       });
 
-      console.log('Transcription received:', transcription);
+      console.log('Transcription received:', transcription.text);
 
-      // Clean up temporary files
-      await fs.unlink(tempFilePath);
-      await fs.rmdir(tempDir);
+      // Clean up
+      fs.unlinkSync(tempFilePath);
+      fs.rmdirSync(tempDir);
 
-      return transcription;
+      return transcription.text;
     } catch (error) {
       console.error('Error details:', error);
       throw new Error(`Failed to transcribe audio: ${error.message}`);
