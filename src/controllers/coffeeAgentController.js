@@ -9,16 +9,42 @@ const Customer = require('../models/Customer');
 class CoffeeAgentController {
   async handleWebhook(req, res) {
     try {
-      // Evolution API webhook format
-      const { key, message } = req.body;
-      console.log('Received webhook:', req.body);
+      const webhookData = Array.isArray(req.body) ? req.body[0] : req.body;
+      console.log('Received webhook data:', webhookData);
 
-      // Extract message details
-      const text = message?.text?.body;
-      const from = message?.from;
-      const instanceId = key?.remoteJid;
+      // Extract message details from Evolution API webhook format
+      const messageData = webhookData?.body?.data;
+      if (!messageData) {
+        return res.status(200).json({ message: 'No message data received' });
+      }
 
-      console.log('Extracted message details:', { text, from, instanceId });
+      const messageType = messageData.messageType;
+      let text;
+      let mediaUrl;
+
+      if (messageType === 'conversation') {
+        text = messageData.message?.conversation;
+      } else if (messageType === 'audioMessage') {
+        // For audio messages, ask for text
+        text = "Por favor, envie sua mensagem em texto para que eu possa ajudá-lo melhor.";
+      } else if (messageType === 'imageMessage') {
+        // For image messages, get both URL and caption if present
+        mediaUrl = messageData.message?.imageMessage?.url;
+        text = messageData.message?.imageMessage?.caption || "Recebi sua imagem. Como posso ajudar?";
+      }
+
+      const from = messageData.key?.remoteJid;
+      const instanceId = messageData.instanceId;
+      const pushName = messageData.pushName;
+
+      console.log('Extracted message details:', { 
+        text, 
+        from, 
+        instanceId, 
+        pushName,
+        messageType,
+        mediaUrl 
+      });
 
       // Skip if no text message
       if (!text) {
