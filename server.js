@@ -32,8 +32,47 @@ app.use(express.json({
     limit: '50mb'
 }));
 
-// Routes
-app.use('/', routes);
+// Health check route
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Debug route to list all registered routes
+app.get('/api/routes', (req, res) => {
+    const routes = [];
+    app._router.stack.forEach(middleware => {
+        if (middleware.route) {
+            routes.push({
+                path: middleware.route.path,
+                methods: Object.keys(middleware.route.methods)
+            });
+        }
+    });
+    res.json(routes);
+});
+
+// API routes
+app.use('/api', routes);
+
+// 404 handler - Must be after all other routes
+app.use((req, res) => {
+    const message = `Route ${req.method}:${req.originalUrl} not found`;
+    console.log(message);
+    res.status(404).json({
+        message,
+        error: 'Not Found',
+        statusCode: 404
+    });
+});
+
+// Error handler - Must be last
+app.use((err, req, res, next) => {
+    console.error('Error:', err);
+    res.status(500).json({
+        error: 'Internal Server Error',
+        message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+    });
+});
 
 // Start server
 app.listen(port, () => {
