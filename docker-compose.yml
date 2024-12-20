@@ -4,6 +4,7 @@ services:
     image: nginx:alpine
     volumes:
       - ./nginx:/etc/nginx/conf.d
+      - nginx_logs:/var/log/nginx
     depends_on:
       - app
     networks:
@@ -63,4 +64,6 @@ networks:
 
 volumes:
   mongodb_data:
+    driver: local
+  nginx_logs:
     driver: local
