@@ -6,6 +6,7 @@ const routes = require('./src/routes');
 
 const app = express();
 const port = process.env.PORT || 3000;
+const host = process.env.HOST || '0.0.0.0';
 
 // Function to connect to MongoDB with retries
 const connectWithRetry = async () => {
@@ -17,7 +18,7 @@ const connectWithRetry = async () => {
             await mongoose.connect(process.env.MONGODB_URI || 'mongodb://mongodb:27017/coffee-rental', {
                 useNewUrlParser: true,
                 useUnifiedTopology: true,
-                serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+                serverSelectionTimeoutMS: 5000,
             });
             console.log('Connected to MongoDB');
             return true;
@@ -28,7 +29,6 @@ const connectWithRetry = async () => {
                 process.exit(1);
             }
             currentTry++;
-            // Wait for 5 seconds before retrying
             await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
@@ -40,7 +40,6 @@ app.use(cors());
 // Parse JSON payloads
 app.use(express.json({
     verify: (req, res, buf) => {
-        // Save raw body for webhook verification
         if (req.originalUrl.includes('/webhook')) {
             req.rawBody = buf.toString();
         }
@@ -51,7 +50,7 @@ app.use(express.json({
 // API routes
 app.use('/api', routes);
 
-// 404 handler - Must be after all other routes
+// 404 handler
 app.use((req, res) => {
     const message = `Route ${req.method}:${req.originalUrl} not found`;
     console.log(message);
@@ -62,7 +61,7 @@ app.use((req, res) => {
     });
 });
 
-// Error handler - Must be last
+// Error handler
 app.use((err, req, res, next) => {
     console.error('Error:', err);
     res.status(500).json({
@@ -76,8 +75,8 @@ const startServer = async () => {
     try {
         await connectWithRetry();
         
-        app.listen(port, () => {
-            console.log(`Server running on port ${port}`);
+        const server = app.listen(port, host, () => {
+            console.log(`Server running on http://${host}:${port}`);
             console.log('Environment:', process.env.NODE_ENV);
             console.log('MongoDB URI:', process.env.MONGODB_URI?.replace(/\/\/[^:]+:[^@]+@/, '//***:***@') || 'mongodb://mongodb:27017/coffee-rental');
             
@@ -90,6 +89,27 @@ const startServer = async () => {
                 }
             });
         });
+
+        // Handle server errors
+        server.on('error', (error) => {
+            if (error.syscall !== 'listen') {
+                throw error;
+            }
+
+            switch (error.code) {
+                case 'EACCES':
+                    console.error(`Port ${port} requires elevated privileges`);
+                    process.exit(1);
+                    break;
+                case 'EADDRINUSE':
+                    console.error(`Port ${port} is already in use`);
+                    process.exit(1);
+                    break;
+                default:
+                    throw error;
+            }
+        });
+
     } catch (error) {
         console.error('Failed to start server:', error);
         process.exit(1);
@@ -109,4 +129,15 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (err) => {
     console.error('Unhandled Rejection:', err);
     process.exit(1);
+});
+
+// Handle termination signals
+process.on('SIGTERM', () => {
+    console.info('SIGTERM signal received. Closing server...');
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
+    console.info('SIGINT signal received. Closing server...');
+    process.exit(0);
 });
