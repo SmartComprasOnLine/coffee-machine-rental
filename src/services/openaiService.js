@@ -16,18 +16,23 @@ class OpenAIService {
     }
   }
 
-  async getSpreadsheetData() {
+  async getAvailableProducts() {
     try {
-      // Get machines from spreadsheet data
-      const machines = await Machine.find({}).lean();
-      const products = await Product.find({}).lean();
+      const machines = await Machine.find({
+        availableForRent: true,
+        stock: { $gt: 0 }
+      }).lean();
 
-      // Format data for the assistant
-      const formattedData = {
+      const products = await Product.find({
+        availableForSale: true,
+        stock: { $gt: 0 }
+      }).lean();
+
+      return {
         machines: machines.map(m => ({
           nome: m.name,
           locacao: `R$ ${m.rentalPrice.toFixed(2)}/mês`,
-          disponivel: m.availableForRent ? 'SIM' : 'NÃO',
+          disponivel: 'SIM',
           estoque: m.stock,
           aceita_pix: m.acceptsPixPayment ? 'SIM' : 'NÃO',
           produtos_suportados: m.supportedProducts,
@@ -47,7 +52,7 @@ class OpenAIService {
           nome: p.name,
           preco: `R$ ${p.price.toFixed(2)}`,
           maquinas_compativeis: p.compatibleMachines,
-          disponivel: p.availableForSale ? 'SIM' : 'NÃO',
+          disponivel: 'SIM',
           estoque: p.stock,
           categoria: p.category,
           descricao: p.description,
@@ -71,17 +76,15 @@ class OpenAIService {
           }
         }))
       };
-
-      return formattedData;
     } catch (error) {
-      console.error('Error getting spreadsheet data:', error);
+      console.error('Error getting available products:', error);
       throw error;
     }
   }
 
   async getSystemPrompt() {
     try {
-      const spreadsheetData = await this.getSpreadsheetData();
+      const availableProducts = await this.getAvailableProducts();
       
       return `
         <assistant>
@@ -98,7 +101,7 @@ class OpenAIService {
           </persona>
 
           <database_information>
-            ${JSON.stringify(spreadsheetData, null, 2)}
+            ${JSON.stringify(availableProducts, null, 2)}
           </database_information>
 
           <communication_style>
