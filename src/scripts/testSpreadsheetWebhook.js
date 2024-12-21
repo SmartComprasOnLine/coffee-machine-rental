@@ -49,7 +49,7 @@ async function testSpreadsheetWebhook() {
   try {
     console.log('Testing machine data webhook...');
     const machineResponse = await axios.post(
-      'http://localhost:3000/api/webhook/spreadsheet',
+      'http://app:3000/api/webhook/spreadsheet',
       testMachineData,
       {
         headers: {
@@ -61,7 +61,7 @@ async function testSpreadsheetWebhook() {
 
     console.log('\nTesting product data webhook...');
     const productResponse = await axios.post(
-      'http://localhost:3000/api/webhook/spreadsheet',
+      'http://app:3000/api/webhook/spreadsheet',
       testProductData,
       {
         headers: {
@@ -76,18 +76,34 @@ async function testSpreadsheetWebhook() {
     const Machine = require('../models/Machine');
     const Product = require('../models/Product');
 
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/coffee-rental');
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://mongodb:27017/coffee-rental');
 
     const machines = await Machine.find({});
-    console.log('\nMachines in database:', machines);
+    console.log('\nMachines in database:', JSON.stringify(machines, null, 2));
 
     const products = await Product.find({});
-    console.log('\nProducts in database:', products);
+    console.log('\nProducts in database:', JSON.stringify(products, null, 2));
 
     await mongoose.connection.close();
 
   } catch (error) {
     console.error('Error:', error.response?.data || error);
+    if (error.response) {
+      console.error('\nResponse error details:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        headers: error.response.headers
+      });
+    }
+    if (error.config) {
+      console.error('\nRequest details:', {
+        url: error.config.url,
+        method: error.config.method,
+        headers: error.config.headers,
+        data: error.config.data
+      });
+    }
   }
 }
 
