@@ -11,74 +11,83 @@ class CoffeeAgentService {
     };
   }
 
-  async handleInitialEngagement(context) {
-    const messages = context?.messages || [];
-    const isFirstInteraction = messages.length <= 2; // System message + user message
+  async getAvailableMachines() {
+    try {
+      const machines = await Machine.find({
+        availableForRent: true,
+        stock: { $gt: 0 }
+      }).lean();
 
-    if (isFirstInteraction) {
+      console.log('Available machines:', {
+        count: machines.length,
+        machines: machines.map(m => ({
+          name: m.name,
+          stock: m.stock,
+          price: m.rentalPrice
+        }))
+      });
+
+      return machines;
+    } catch (error) {
+      console.error('Error getting available machines:', error);
+      throw error;
+    }
+  }
+
+  async handleInitialEngagement(context) {
+    const machines = await this.getAvailableMachines();
+    
+    if (machines.length === 0) {
       return {
-        message: '*Oi, tudo bem?* Somos do Grupo Souza Café, e oferecemos máquinas de café ideais para empresas de todos os tamanhos. Para qual CEP você deseja receber uma cotação?',
-        requiresCEP: true
+        message: '*Oi, tudo bem?* No momento estamos com todas as nossas máquinas alocadas. Posso anotar seu contato para avisá-lo assim que tivermos disponibilidade?'
       };
     }
 
-    // If not first interaction, generate a contextual response
-    const prompt = `
-      Com base no histórico da conversa, gere uma resposta personalizada para retomar o atendimento.
-      Mantenha um tom profissional mas amigável, e use informações do histórico para personalizar a resposta.
-      Não repita informações já fornecidas anteriormente.
-    `;
-
-    const response = await openaiService.generateResponse(prompt, context);
-    return { message: response };
+    return {
+      message: '*Oi, tudo bem?* Somos do Grupo Souza Café, e oferecemos máquinas de café ideais para empresas de todos os tamanhos. Para qual CEP você deseja receber uma cotação?',
+      requiresCEP: true
+    };
   }
 
   async getMachineRecommendation(requirements, context) {
     try {
-      const query = { availableForRent: true, stock: { $gt: 0 } };
+      const machines = await this.getAvailableMachines();
+      
+      if (machines.length === 0) {
+        return {
+          message: '*Desculpe!* No momento estamos com todas as nossas máquinas alocadas. Posso anotar seu contato para avisá-lo assim que tivermos disponibilidade?'
+        };
+      }
+
+      let filteredMachines = [...machines];
       
       if (requirements.maxPrice) {
-        query.rentalPrice = { $lte: requirements.maxPrice };
+        filteredMachines = filteredMachines.filter(m => m.rentalPrice <= requirements.maxPrice);
       }
       
-      if (requirements.beverageTypes) {
-        query.supportedProducts = { 
-          $regex: requirements.beverageTypes.join('|'), 
-          $options: 'i' 
-        };
+      if (requirements.beverageTypes && requirements.beverageTypes.length > 0) {
+        filteredMachines = filteredMachines.filter(m => 
+          requirements.beverageTypes.every(type => 
+            m.supportedProducts.toLowerCase().includes(type.toLowerCase())
+          )
+        );
       }
 
-      const machines = await Machine.find(query).sort({ rentalPrice: 1 });
-      
-      if (!machines.length) {
-        const prompt = `
-          O cliente procura uma máquina com os seguintes requisitos: ${JSON.stringify(requirements)}.
-          Infelizmente não temos máquinas disponíveis com essas características específicas.
-          Gere uma resposta educada sugerindo alternativas com base no histórico da conversa.
-        `;
-        const response = await openaiService.generateResponse(prompt, context);
-        return { message: response };
-      }
-
-      const recommendedMachine = machines[0];
-      const previousMessages = context?.messages || [];
-      const hasSeenMachine = previousMessages.some(msg => 
-        msg.content.includes(recommendedMachine.name)
-      );
-
-      if (hasSeenMachine) {
-        const prompt = `
-          O cliente já viu informações sobre a máquina ${recommendedMachine.name}.
-          Gere uma resposta que destaque outros aspectos ou benefícios desta máquina
-          que ainda não foram mencionados no histórico da conversa.
-        `;
-        const response = await openaiService.generateResponse(prompt, context);
+      if (filteredMachines.length === 0) {
+        // If no machines match the filters, suggest available alternatives
+        const suggestion = machines[0];
         return {
-          message: response,
-          mediaUrls: [recommendedMachine.image]
+          message: `No momento não temos máquinas disponíveis com essas características específicas. Mas que tal conhecer nossa *${suggestion.name}*? ${suggestion.description}\n\n` +
+                  `Ela oferece:\n` +
+                  `• ${suggestion.supportedProducts}\n` +
+                  `• Aluguel: R$ ${suggestion.rentalPrice}/mês\n` +
+                  `• ${suggestion.paymentMethod}\n\n` +
+                  `Posso te mostrar mais detalhes?`,
+          mediaUrls: suggestion.image ? [suggestion.image] : []
         };
       }
 
+      const recommendedMachine = filteredMachines[0];
       return this.formatMachineRecommendation(recommendedMachine);
     } catch (error) {
       console.error('Error in getMachineRecommendation:', error);
@@ -88,10 +97,22 @@ class CoffeeAgentService {
 
   async getProductsForMachine(machineName, context) {
     try {
-      const machine = await Machine.findOne({ name: machineName });
+      const machine = await Machine.findOne({
+        name: machineName,
+        availableForRent: true,
+        stock: { $gt: 0 }
+      });
+
       if (!machine) {
+        const availableMachines = await this.getAvailableMachines();
+        if (availableMachines.length === 0) {
+          return {
+            message: 'Desculpe, no momento não temos máquinas disponíveis para aluguel.'
+          };
+        }
+
         return {
-          message: 'Desculpe, não encontrei informações sobre esta máquina.'
+          message: `A máquina ${machineName} não está disponível no momento. Que tal conhecer nossa *${availableMachines[0].name}*? ${availableMachines[0].description}`
         };
       }
 
@@ -100,21 +121,6 @@ class CoffeeAgentService {
         availableForSale: true,
         stock: { $gt: 0 }
       });
-
-      const previousMessages = context?.messages || [];
-      const hasSeenProducts = previousMessages.some(msg => 
-        msg.role === 'assistant' && msg.content.includes('Produtos compatíveis')
-      );
-
-      if (hasSeenProducts) {
-        const prompt = `
-          O cliente já viu a lista de produtos compatíveis com a máquina ${machineName}.
-          Gere uma resposta que destaque outros aspectos dos produtos ou sugira
-          combinações interessantes com base no histórico da conversa.
-        `;
-        const response = await openaiService.generateResponse(prompt, context);
-        return { message: response };
-      }
 
       return this.formatProductRecommendation(machine, products);
     } catch (error) {
@@ -170,19 +176,12 @@ class CoffeeAgentService {
   }
 
   async handleContractInquiry(context) {
-    const previousMessages = context?.messages || [];
-    const hasSeenContractInfo = previousMessages.some(msg => 
-      msg.role === 'assistant' && msg.content.includes('Contrato de Locação')
-    );
-
-    if (hasSeenContractInfo) {
-      const prompt = `
-        O cliente já viu as informações básicas do contrato.
-        Gere uma resposta que esclareça outros aspectos do contrato ou
-        foque em resolver dúvidas específicas mencionadas no histórico da conversa.
-      `;
-      const response = await openaiService.generateResponse(prompt, context);
-      return { message: response };
+    const machines = await this.getAvailableMachines();
+    
+    if (machines.length === 0) {
+      return {
+        message: 'No momento estamos com todas as nossas máquinas alocadas. Posso anotar seu contato para avisá-lo assim que tivermos disponibilidade?'
+      };
     }
 
     return {
