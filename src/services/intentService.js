@@ -1,4 +1,6 @@
 const openaiService = require('./openaiService');
+const Machine = require('../models/Machine');
+const Product = require('../models/Product');
 
 class IntentService {
   constructor() {
@@ -17,9 +19,20 @@ class IntentService {
 
   async analyzeIntent(text, context = null) {
     try {
+      // Get available machines and products from database
+      const machines = await Machine.find({ availableForRent: true, stock: { $gt: 0 } });
+      const products = await Product.find({ availableForSale: true, stock: { $gt: 0 } });
+
       const prompt = `
         Analise a seguinte mensagem e determine a intenção do usuário.
         Mensagem: "${text}"
+
+        Contexto do negócio:
+        Máquinas disponíveis:
+        ${machines.map(m => `- ${m.name}: R$ ${m.rentalPrice}/mês - ${m.description}`).join('\n')}
+        
+        Produtos disponíveis:
+        ${products.map(p => `- ${p.name}: R$ ${p.price} - ${p.description}`).join('\n')}
 
         Possíveis intenções:
         ${Object.entries(this.intents).map(([intent, desc]) => `- ${intent}: ${desc}`).join('\n')}
@@ -35,7 +48,9 @@ class IntentService {
       console.log('Intent detection:', {
         text,
         detectedIntent: intent,
-        hasContext: !!context
+        hasContext: !!context,
+        machinesCount: machines.length,
+        productsCount: products.length
       });
 
       return this.intents[intent] ? intent : 'UNKNOWN';
@@ -45,30 +60,12 @@ class IntentService {
     }
   }
 
-  getResponseTemplate(intent) {
-    const templates = {
-      'PERSONAL_QUESTION': {
-        message: 'Olá! Eu sou a Júlia, assistente digital do Grupo Souza Café. Estou aqui para ajudar você com informações sobre nossas máquinas de café, produtos e serviços. Como posso te ajudar hoje?'
-      },
-      'CEP_INFO': {
-        message: 'Ótimo! Vou verificar a disponibilidade de atendimento na sua região. Enquanto isso, me conte um pouco sobre o que você procura em uma máquina de café. Que tipo de bebidas você gostaria de oferecer?'
-      },
-      'UNKNOWN': {
-        message: 'Desculpe, não entendi completamente. Posso ajudar você com informações sobre:\n\n' +
-                '• Máquinas de café disponíveis\n' +
-                '• Produtos e insumos\n' +
-                '• Contratos e documentação\n' +
-                '• Suporte técnico\n' +
-                '• Formas de pagamento\n\n' +
-                'Como posso te ajudar?'
-      }
-    };
-
-    return templates[intent] || templates['UNKNOWN'];
-  }
-
   async generateContextualResponse(intent, text, context) {
     try {
+      // Get available machines and products from database
+      const machines = await Machine.find({ availableForRent: true, stock: { $gt: 0 } });
+      const products = await Product.find({ availableForSale: true, stock: { $gt: 0 } });
+
       const prompt = `
         Como Júlia, assistente digital do Grupo Souza Café, responda à seguinte mensagem:
         "${text}"
@@ -76,13 +73,29 @@ class IntentService {
         Intenção detectada: ${intent}
         Descrição da intenção: ${this.intents[intent]}
 
+        Informações atualizadas do banco de dados:
+        Máquinas disponíveis:
+        ${machines.map(m => `- ${m.name}: R$ ${m.rentalPrice}/mês
+          • Descrição: ${m.description}
+          • Produtos suportados: ${m.supportedProducts}
+          • Forma de pagamento: ${m.paymentMethod}
+          • Contrato: ${m.contractDuration}`).join('\n')}
+        
+        Produtos disponíveis:
+        ${products.map(p => `- ${p.name}: R$ ${p.price}
+          • Categoria: ${p.category}
+          • Compatível com: ${p.compatibleMachines}
+          • Descrição: ${p.description}`).join('\n')}
+
         Diretrizes:
-        1. Mantenha um tom profissional mas amigável
-        2. Seja clara e objetiva
-        3. Foque em resolver a necessidade do cliente
-        4. Use emojis com moderação
-        5. Evite respostas genéricas
+        1. Use APENAS as informações atualizadas do banco de dados
+        2. Mantenha um tom profissional mas amigável
+        3. Seja clara e objetiva
+        4. Foque em resolver a necessidade do cliente
+        5. Use emojis com moderação
         6. Use formatação em negrito (*texto*) para destacar informações importantes
+        7. Evite respostas genéricas
+        8. Sempre mencione preços e condições reais do banco de dados
 
         ${context ? 'Contexto da conversa:\n' + JSON.stringify(context.messages) : ''}
       `;
@@ -91,7 +104,10 @@ class IntentService {
       return { message: response };
     } catch (error) {
       console.error('Error generating contextual response:', error);
-      return this.getResponseTemplate(intent);
+      return {
+        message: 'Desculpe, estou com dificuldade para acessar algumas informações no momento. ' +
+                'Você poderia reformular sua pergunta?'
+      };
     }
   }
 }
