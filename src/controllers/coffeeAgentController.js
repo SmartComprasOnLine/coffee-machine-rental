@@ -3,6 +3,7 @@ const intentService = require('../services/intentService');
 const evolutionApi = require('../services/evolutionApi');
 const openaiService = require('../services/openaiService');
 const conversationService = require('../services/conversationService');
+const privacyService = require('../services/privacyService');
 const Machine = require('../models/Machine');
 const Product = require('../models/Product');
 
@@ -85,6 +86,24 @@ class CoffeeAgentController {
 
       if (!text) {
         return res.status(200).json({ message: 'No text message received' });
+      }
+
+      // Check for data deletion request
+      if (text.toLowerCase() === 'apagar meus dados') {
+        try {
+          await privacyService.deleteUserData(userId);
+          const response = await privacyService.confirmDeletion(userId);
+          await evolutionApi.sendMessage(this.instanceId, from, response.message);
+          return res.status(200).json({ success: true });
+        } catch (error) {
+          console.error('Error handling data deletion:', error);
+          await evolutionApi.sendMessage(
+            this.instanceId, 
+            from, 
+            '*Erro ao apagar dados*\n\nDesculpe, ocorreu um erro ao tentar apagar seus dados. Por favor, tente novamente mais tarde.'
+          );
+          return res.status(500).json({ error: error.message });
+        }
       }
 
       // Get conversation context
