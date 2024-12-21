@@ -4,50 +4,31 @@ const Product = require('../models/Product');
 class SpreadsheetController {
   async handleWebhook(req, res) {
     try {
-      console.log('Received webhook data:', req.body);
-      const data = this.parseYamlData(req.body.text);
-      
-      if (!data || !data.Planilha) {
-        return res.status(400).json({ error: 'Invalid data format' });
-      }
+      const data = req.body;
+      console.log('Received spreadsheet webhook data:', data);
 
-      switch (data.Planilha) {
-        case 'MÁQUINAS ALUGAR':
-          await this.updateMachineData(data);
-          break;
-        case 'PRODUTOS':
-          await this.updateProductData(data);
-          break;
-        case 'MAQUINAS COMPRAR':
-          // Handle purchase prices if needed
-          break;
-        default:
-          console.log('Unknown spreadsheet type:', data.Planilha);
+      if (data.Planilha === 'MÁQUINAS ALUGAR') {
+        await this.updateMachineData(data);
+      }
+      else if (data.Planilha === 'PRODUTOS') {
+        await this.updateProductData(data);
       }
 
       return res.status(200).json({ success: true });
     } catch (error) {
-      console.error('Error in handleWebhook:', error);
+      console.error('Error in handleSpreadsheetWebhook:', error);
       return res.status(500).json({ error: error.message });
-    }
-  }
-
-  parseYamlData(text) {
-    try {
-      // Find JSON content between triple dashes
-      const match = text.match(/---\n([\s\S]*?)\n---/);
-      if (!match) return null;
-      
-      // Parse JSON content
-      return JSON.parse(match[1]);
-    } catch (error) {
-      console.error('Error parsing YAML data:', error);
-      return null;
     }
   }
 
   async updateMachineData(data) {
     try {
+      console.log('Updating machine data:', {
+        name: data.MÁQUINA,
+        available: data['DISPONÍVEL PARA ALUGUEL'],
+        stock: data.ESTOQUE
+      });
+
       const machineData = {
         name: data.MÁQUINA,
         availableForRent: data['DISPONÍVEL PARA ALUGUEL'] === 'SIM',
@@ -74,13 +55,19 @@ class SpreadsheetController {
         cancellationFee: data['MULTA CANCELAMENTO DE CONTRATO']
       };
 
-      await Machine.findOneAndUpdate(
+      const result = await Machine.findOneAndUpdate(
         { name: data.MÁQUINA },
         machineData,
         { upsert: true, new: true }
       );
 
-      console.log(`Updated/created machine: ${data.MÁQUINA}`);
+      console.log('Machine data updated:', {
+        name: result.name,
+        available: result.availableForRent,
+        stock: result.stock
+      });
+
+      return result;
     } catch (error) {
       console.error('Error updating machine data:', error);
       throw error;
@@ -89,7 +76,11 @@ class SpreadsheetController {
 
   async updateProductData(data) {
     try {
-      if (!data.NOME) return; // Skip empty rows
+      console.log('Updating product data:', {
+        name: data.NOME,
+        available: data['DISPONÍVEL PARA VENDA'],
+        stock: data.ESTOQUE
+      });
 
       const productData = {
         name: data.NOME,
@@ -110,21 +101,6 @@ class SpreadsheetController {
             grams: parseFloat(data['GRAMATURA 120ML']) || 0,
             doses: parseInt(data['DOSE 120ML']) || 0,
             pricePerDose: parseFloat(data['PREÇO DOSE/ 120ML']) || 0
-          },
-          ml150: {
-            grams: parseFloat(data['GRAMATURA 150ML']) || 0,
-            doses: parseInt(data['DOSE 150ML']) || 0,
-            pricePerDose: parseFloat(data['PREÇO DOSE/ 150ML']) || 0
-          },
-          ml180: {
-            grams: parseFloat(data['GRAMATURA 180ML']) || 0,
-            doses: parseInt(data['DOSE 180ML']) || 0,
-            pricePerDose: parseFloat(data['PREÇO DOSE/ 180ML']) || 0
-          },
-          ml200: {
-            grams: parseFloat(data['GRAMATURA 200ML']) || 0,
-            doses: parseInt(data['DOSE 200ML']) || 0,
-            pricePerDose: parseFloat(data['PREÇO DOSE/ 200ML']) || 0
           }
         },
         description: data.DESCRIÇÃO,
@@ -134,13 +110,19 @@ class SpreadsheetController {
         category: this.determineProductCategory(data.NOME)
       };
 
-      await Product.findOneAndUpdate(
+      const result = await Product.findOneAndUpdate(
         { name: data.NOME },
         productData,
         { upsert: true, new: true }
       );
 
-      console.log(`Updated/created product: ${data.NOME}`);
+      console.log('Product data updated:', {
+        name: result.name,
+        available: result.availableForSale,
+        stock: result.stock
+      });
+
+      return result;
     } catch (error) {
       console.error('Error updating product data:', error);
       throw error;
@@ -148,8 +130,6 @@ class SpreadsheetController {
   }
 
   determineProductCategory(name) {
-    if (!name) return 'SUPPLIES';
-    
     name = name.toLowerCase();
     if (name.includes('café')) return 'COFFEE';
     if (name.includes('chocolate')) return 'CHOCOLATE';
@@ -157,6 +137,70 @@ class SpreadsheetController {
     if (name.includes('chá')) return 'TEA';
     if (name.includes('leite')) return 'MILK';
     return 'SUPPLIES';
+  }
+
+  async getMachineStats() {
+    try {
+      const stats = await Machine.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalMachines: { $sum: 1 },
+            availableMachines: {
+              $sum: {
+                $cond: [
+                  { $and: [
+                    { $eq: ["$availableForRent", true] },
+                    { $gt: ["$stock", 0] }
+                  ]},
+                  1,
+                  0
+                ]
+              }
+            },
+            totalStock: { $sum: "$stock" }
+          }
+        }
+      ]);
+
+      console.log('Machine statistics:', stats[0]);
+      return stats[0];
+    } catch (error) {
+      console.error('Error getting machine stats:', error);
+      throw error;
+    }
+  }
+
+  async getProductStats() {
+    try {
+      const stats = await Product.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalProducts: { $sum: 1 },
+            availableProducts: {
+              $sum: {
+                $cond: [
+                  { $and: [
+                    { $eq: ["$availableForSale", true] },
+                    { $gt: ["$stock", 0] }
+                  ]},
+                  1,
+                  0
+                ]
+              }
+            },
+            totalStock: { $sum: "$stock" }
+          }
+        }
+      ]);
+
+      console.log('Product statistics:', stats[0]);
+      return stats[0];
+    } catch (error) {
+      console.error('Error getting product stats:', error);
+      throw error;
+    }
   }
 }
 
