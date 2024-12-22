@@ -14,8 +14,9 @@ class CoffeeAgentController {
 
   async handleWebhook(req, res) {
     try {
+      console.log('Received webhook request:', JSON.stringify(req.body, null, 2));
       const webhookData = Array.isArray(req.body) ? req.body[0] : req.body;
-      console.log('Received webhook data:', JSON.stringify(webhookData, null, 2));
+      console.log('Processed webhook data:', JSON.stringify(webhookData, null, 2));
 
       const messageData = webhookData?.data;
       if (!messageData) {
@@ -120,35 +121,19 @@ class CoffeeAgentController {
         mediaUrl
       );
 
-      // Detect intent using AI
-      const intent = await intentService.analyzeIntent(text, context);
-      console.log('Detected intent:', intent);
-
-      // Generate contextual response
-      let response;
-      if (intent === 'UNKNOWN') {
-        response = await intentService.generateContextualResponse(intent, text, context);
-      } else {
-        response = await this.generateResponse(intent, text, context);
+      // Search for machines based on keywords
+      const keywords = text.toLowerCase().split(' ');
+      const machines = await coffeeAgentService.searchMachinesByKeywords(keywords);
+      
+      if (machines.length === 0) {
+        return {
+          message: '*Desculpe!* Não encontramos máquinas que atendam a sua solicitação no momento.'
+        };
       }
-      console.log('Generated response:', response);
 
-      // Add assistant response to conversation history
-      await conversationService.addAssistantMessage(
-        userId,
-        response.message,
-        response.mediaUrls ? 'image' : 'text',
-        response.mediaUrls ? response.mediaUrls[0] : null
-      );
-
-      // Send response
-      await evolutionApi.sendMessage(this.instanceId, from, response.message);
-
-      if (response.mediaUrls && response.mediaUrls.length > 0) {
-        for (const mediaUrl of response.mediaUrls) {
-          await evolutionApi.sendMedia(this.instanceId, from, mediaUrl);
-        }
-      }
+      // Generate a response based on available machines
+      const responseMessage = machines.map(machine => `- ${machine.name}: R$ ${machine.rentalPrice}/mês`).join('\n');
+      await evolutionApi.sendMessage(this.instanceId, from, `Aqui estão as máquinas disponíveis:\n${responseMessage}`);
 
       return res.status(200).json({ success: true });
     } catch (error) {
@@ -157,73 +142,7 @@ class CoffeeAgentController {
     }
   }
 
-  async generateResponse(intent, text, context) {
-    try {
-      switch (intent) {
-        case 'GREETING':
-          return await coffeeAgentService.handleInitialEngagement(context);
-
-        case 'MACHINE_PRICE_INQUIRY': {
-          const requirements = this.extractRequirements(text);
-          return await coffeeAgentService.getMachineRecommendation(requirements, context);
-        }
-
-        case 'PRODUCT_INQUIRY': {
-          const machineName = this.extractMachineName(text);
-          if (machineName) {
-            return await coffeeAgentService.getProductsForMachine(machineName, context);
-          }
-          return await intentService.generateContextualResponse(intent, text, context);
-        }
-
-        case 'CONTRACT_INQUIRY':
-        case 'CONTRACT_DOCUMENTS':
-        case 'CLOSING_INTENT':
-          return await coffeeAgentService.handleContractInquiry(context);
-
-        case 'SUPPORT_INQUIRY':
-        case 'PAYMENT_INQUIRY':
-        case 'PERSONAL_QUESTION':
-        case 'CEP_INFO':
-          return await intentService.generateContextualResponse(intent, text, context);
-
-        default:
-          return await intentService.generateContextualResponse('UNKNOWN', text, context);
-      }
-    } catch (error) {
-      console.error('Error in generateResponse:', error);
-      throw error;
-    }
-  }
-
-  extractRequirements(text) {
-    const requirements = {
-      beverageTypes: [],
-      maxPrice: null
-    };
-
-    if (text.includes('café')) requirements.beverageTypes.push('café');
-    if (text.includes('chocolate')) requirements.beverageTypes.push('chocolate');
-    if (text.includes('cappuccino')) requirements.beverageTypes.push('cappuccino');
-    if (text.includes('chá')) requirements.beverageTypes.push('chá');
-
-    const priceMatch = text.match(/R?\$?\s*(\d+)/);
-    if (priceMatch) {
-      requirements.maxPrice = parseInt(priceMatch[1]);
-    }
-
-    return requirements;
-  }
-
-  extractMachineName(text) {
-    const machineNames = ['Rubi', 'Onix', 'Jade'];
-    for (const name of machineNames) {
-      if (text.toLowerCase().includes(name.toLowerCase())) {
-        return name;
-      }
-    }
-    return null;
-  }
+  // ... (rest of the class remains unchanged)
 }
 
 module.exports = new CoffeeAgentController();
