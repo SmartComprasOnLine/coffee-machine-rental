@@ -36,14 +36,16 @@ class CoffeeAgentService {
 
   async searchMachinesByKeywords(keywords) {
     try {
+      const regexQueries = keywords.map(keyword => ({
+        $or: [
+          { description: { $regex: keyword, $options: 'i' } },
+          { supportedProducts: { $regex: keyword, $options: 'i' } },
+          { name: { $regex: keyword, $options: 'i' } }
+        ]
+      }));
+
       const machines = await Machine.find({
-        $or: keywords.map(keyword => ({
-          $or: [
-            { description: { $regex: keyword, $options: 'i' } },
-            { supportedProducts: { $regex: keyword, $options: 'i' } },
-            { name: { $regex: keyword, $options: 'i' } }
-          ]
-        }))
+        $or: regexQueries
       }).lean();
 
       console.log('Machines found for keywords:', keywords, machines);
