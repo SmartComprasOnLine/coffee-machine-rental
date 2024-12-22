@@ -34,63 +34,22 @@ class CoffeeAgentService {
     }
   }
 
-  async handleInitialEngagement(context) {
-    const machines = await this.getAvailableMachines();
-    
-    if (machines.length === 0) {
-      return {
-        message: '*Oi, tudo bem?* No momento estamos com todas as nossas máquinas alocadas. Posso anotar seu contato para avisá-lo assim que tivermos disponibilidade?'
-      };
-    }
-
-    return {
-      message: '*Oi, tudo bem?* Somos do Grupo Souza Café, e oferecemos máquinas de café ideais para empresas de todos os tamanhos. Para qual CEP você deseja receber uma cotação?',
-      requiresCEP: true
-    };
-  }
-
-  async getMachineRecommendation(requirements, context) {
+  async searchMachinesByKeywords(keywords) {
     try {
-      const machines = await this.getAvailableMachines();
-      
-      if (machines.length === 0) {
-        return {
-          message: '*Desculpe!* No momento estamos com todas as nossas máquinas alocadas. Posso anotar seu contato para avisá-lo assim que tivermos disponibilidade?'
-        };
-      }
+      const machines = await Machine.find({
+        $or: keywords.map(keyword => ({
+          $or: [
+            { description: { $regex: keyword, $options: 'i' } },
+            { supportedProducts: { $regex: keyword, $options: 'i' } },
+            { name: { $regex: keyword, $options: 'i' } }
+          ]
+        }))
+      }).lean();
 
-      let filteredMachines = [...machines];
-      
-      if (requirements.maxPrice) {
-        filteredMachines = filteredMachines.filter(m => m.rentalPrice <= requirements.maxPrice);
-      }
-      
-      if (requirements.beverageTypes && requirements.beverageTypes.length > 0) {
-        filteredMachines = filteredMachines.filter(m => 
-          requirements.beverageTypes.every(type => 
-            m.supportedProducts.toLowerCase().includes(type.toLowerCase())
-          )
-        );
-      }
-
-      if (filteredMachines.length === 0) {
-        // If no machines match the filters, suggest available alternatives
-        const suggestion = machines[0];
-        return {
-          message: `No momento não temos máquinas disponíveis com essas características específicas. Mas que tal conhecer nossa *${suggestion.name}*? ${suggestion.description}\n\n` +
-                  `Ela oferece:\n` +
-                  `• ${suggestion.supportedProducts}\n` +
-                  `• Aluguel: R$ ${suggestion.rentalPrice}/mês\n` +
-                  `• ${suggestion.paymentMethod}\n\n` +
-                  `Posso te mostrar mais detalhes?`,
-          mediaUrls: suggestion.image ? [suggestion.image] : []
-        };
-      }
-
-      const recommendedMachine = filteredMachines[0];
-      return this.formatMachineRecommendation(recommendedMachine);
+      console.log('Machines found for keywords:', keywords, machines);
+      return machines;
     } catch (error) {
-      console.error('Error in getMachineRecommendation:', error);
+      console.error('Error searching machines by keywords:', error);
       throw error;
     }
   }
