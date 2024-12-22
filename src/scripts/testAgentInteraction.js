@@ -12,7 +12,9 @@ async function testAgentInteraction() {
             conversation: userMessage,
             messageType: 'conversation',
             key: {
-              remoteJid: 'user@example.com'
+              remoteJid: '558199725668@s.whatsapp.net',
+              fromMe: false,
+              id: '3AAD465AC6792528B175'
             },
             pushName: 'Diêgo Santana' // Adding pushName to simulate a real user
           }
