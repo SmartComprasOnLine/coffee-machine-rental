@@ -15,10 +15,11 @@ class CoffeeAgentController {
   async handleWebhook(req, res) {
     try {
       const webhookData = Array.isArray(req.body) ? req.body[0] : req.body;
-      console.log('Received webhook data:', webhookData);
+      console.log('Received webhook data:', JSON.stringify(webhookData, null, 2));
 
       const messageData = webhookData?.data;
       if (!messageData) {
+        console.error('No message data found in webhook data');
         return res.status(200).json({ message: 'No message data received' });
       }
 
@@ -85,6 +86,7 @@ class CoffeeAgentController {
       });
 
       if (!text) {
+        console.error('No text message received');
         return res.status(200).json({ message: 'No text message received' });
       }
 
