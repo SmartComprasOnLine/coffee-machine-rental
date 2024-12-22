@@ -1,3 +1,4 @@
+const natural = require('natural');
 const Machine = require('../models/Machine');
 const Product = require('../models/Product');
 const openaiService = require('./openaiService');
@@ -36,20 +37,18 @@ class CoffeeAgentService {
 
   async searchMachinesByKeywords(keywords) {
     try {
-      const regexQueries = keywords.map(keyword => ({
-        $or: [
-          { description: { $regex: keyword, $options: 'i' } },
-          { supportedProducts: { $regex: keyword, $options: 'i' } },
-          { name: { $regex: keyword, $options: 'i' } }
-        ]
-      }));
+      const machines = await this.getAvailableMachines();
+      const tokenizer = new natural.WordTokenizer();
+      const stemmer = natural.PorterStemmer;
 
-      const machines = await Machine.find({
-        $or: regexQueries
-      }).lean();
+      const stemmedKeywords = keywords.map(keyword => stemmer.stem(keyword.toLowerCase()));
+      const filteredMachines = machines.filter(machine => {
+        const machineDescription = machine.description.toLowerCase();
+        return stemmedKeywords.some(stemmedKeyword => machineDescription.includes(stemmedKeyword));
+      });
 
-      console.log('Machines found for keywords:', keywords, machines);
-      return machines;
+      console.log('Machines found for keywords:', keywords, filteredMachines);
+      return filteredMachines;
     } catch (error) {
       console.error('Error searching machines by keywords:', error);
       throw error;
