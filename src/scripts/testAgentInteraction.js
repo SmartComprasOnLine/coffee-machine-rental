@@ -13,7 +13,8 @@ async function testAgentInteraction() {
             messageType: 'conversation',
             key: {
               remoteJid: 'user@example.com'
-            }
+            },
+            pushName: 'Diêgo Santana' // Adding pushName to simulate a real user
           }
         }
       },
