@@ -164,7 +164,34 @@ class CoffeeAgentController {
     }
   }
 
-  // ... (rest of the class remains unchanged)
+  extractRequirements(text) {
+    const requirements = {
+      beverageTypes: [],
+      maxPrice: null
+    };
+
+    if (text.includes('café')) requirements.beverageTypes.push('café');
+    if (text.includes('chocolate')) requirements.beverageTypes.push('chocolate');
+    if (text.includes('cappuccino')) requirements.beverageTypes.push('cappuccino');
+    if (text.includes('chá')) requirements.beverageTypes.push('chá');
+
+    const priceMatch = text.match(/R?\$?\s*(\d+)/);
+    if (priceMatch) {
+      requirements.maxPrice = parseInt(priceMatch[1]);
+    }
+
+    return requirements;
+  }
+
+  extractMachineName(text) {
+    const machineNames = ['Rubi', 'Onix', 'Jade'];
+    for (const name of machineNames) {
+      if (text.toLowerCase().includes(name.toLowerCase())) {
+        return name;
+      }
+    }
+    return null;
+  }
 }
 
 module.exports = new CoffeeAgentController();
