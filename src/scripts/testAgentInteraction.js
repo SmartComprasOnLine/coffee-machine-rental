@@ -27,6 +27,14 @@ async function testAgentInteraction() {
     console.log('Agent response:', response.data);
   } catch (error) {
     console.error('Error during agent interaction test:', error.response?.data || error);
+    if (error.response) {
+      console.error('Response error details:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        headers: error.response.headers
+      });
+    }
   }
 }
 
