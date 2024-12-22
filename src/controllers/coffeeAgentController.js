@@ -72,7 +72,7 @@ class CoffeeAgentController {
       }
 
       const from = messageData.key?.remoteJid;
-      const userId = from.split('@')[0];
+      const userId = from ? from.split('@')[0] : null; // Ensure userId is defined
       const pushName = messageData.pushName;
 
       console.log('Extracted message details:', { 
