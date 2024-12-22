@@ -1,38 +1,20 @@
-# Use Node.js LTS version with smaller Alpine base
+# Use the official Node.js image.
 FROM node:18-alpine
 
-# Install curl and network tools for debugging
-RUN apk add --no-cache curl iputils
-
-# Create app directory and ensure proper permissions
+# Set the working directory.
 WORKDIR /usr/src/app
-RUN chown node:node /usr/src/app
 
-# Switch to non-root user
-USER node
+# Copy package.json and package-lock.json.
+COPY package*.json ./
 
-# Install app dependencies
-COPY --chown=node:node package*.json ./
+# Install dependencies.
+RUN npm install
 
-# Install dependencies with production only
-ENV NODE_ENV=production
-RUN npm install --production --no-audit
+# Copy the rest of the application code.
+COPY . .
 
-# Bundle app source
-COPY --chown=node:node . .
-
-# Create temp directory with proper permissions
-RUN mkdir -p /usr/src/app/temp && chown -R node:node /usr/src/app/temp
-
-# Expose port
+# Expose the application port.
 EXPOSE 3000
 
-# Set host to listen on all interfaces
-ENV HOST=0.0.0.0
-
-# Add healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
-
-# Start the application with reduced memory footprint
-CMD ["node", "--optimize-for-size", "--max-old-space-size=256", "server.js"]
+# Start the application.
+CMD ["node", "server.js"]

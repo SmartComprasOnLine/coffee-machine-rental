@@ -133,7 +133,16 @@ class CoffeeAgentController {
         };
       } else if (intent === 'MACHINE_PRICE_INQUIRY') {
         const requirements = this.extractRequirements(text);
-        response = await coffeeAgentService.getMachineRecommendation(requirements, context);
+        const machines = await coffeeAgentService.searchMachinesByKeywords(requirements.beverageTypes);
+        if (machines.length > 0) {
+          response = {
+            message: `Aqui estão as máquinas disponíveis:\n${machines.map(m => `- ${m.name}: R$ ${m.rentalPrice}/mês`).join('\n')}`
+          };
+        } else {
+          response = {
+            message: '*Desculpe!* Não encontramos máquinas que atendam a sua solicitação no momento.'
+          };
+        }
       } else {
         response = await intentService.generateContextualResponse(intent, text, context);
       }
