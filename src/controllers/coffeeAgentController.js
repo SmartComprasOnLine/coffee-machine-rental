@@ -4,6 +4,7 @@ const evolutionApi = require('../services/evolutionApi');
 const openaiService = require('../services/openaiService');
 const conversationService = require('../services/conversationService');
 const privacyService = require('../services/privacyService');
+const compromise = require('compromise');
 const Machine = require('../models/Machine');
 const Product = require('../models/Product');
 
@@ -121,8 +122,12 @@ class CoffeeAgentController {
         mediaUrl
       );
 
-      // Detect intent using AI
-      const intent = await intentService.analyzeIntent(text, context);
+      // Use NLP to analyze the text
+      const doc = compromise(text);
+      const intent = doc.match('#Greeting').found ? 'GREETING' : 
+                     doc.match('#MachinePriceInquiry').found ? 'MACHINE_PRICE_INQUIRY' : 
+                     'UNKNOWN';
+
       console.log('Detected intent:', intent);
 
       // Generate contextual response
@@ -133,7 +138,7 @@ class CoffeeAgentController {
         };
       } else if (intent === 'MACHINE_PRICE_INQUIRY') {
         const requirements = this.extractRequirements(text);
-        const machines = await coffeeAgentService.searchMachinesByKeywords(requirements.beverageTypes);
+        const machines = await coffeeAgentService.getAvailableMachines();
         if (machines.length > 0) {
           response = {
             message: `Aqui estão as máquinas disponíveis:\n${machines.map(m => `- ${m.name}: R$ ${m.rentalPrice}/mês`).join('\n')}`
@@ -144,7 +149,9 @@ class CoffeeAgentController {
           };
         }
       } else {
-        response = await intentService.generateContextualResponse(intent, text, context);
+        response = {
+          message: "Desculpe, não entendi sua solicitação. Poderia reformular?"
+        };
       }
 
       console.log('Generated response:', response);
