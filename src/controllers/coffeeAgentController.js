@@ -121,19 +121,41 @@ class CoffeeAgentController {
         mediaUrl
       );
 
-      // Search for machines based on keywords
-      const keywords = text.toLowerCase().split(' ');
-      const machines = await coffeeAgentService.searchMachinesByKeywords(keywords);
-      
-      if (machines.length === 0) {
-        return {
-          message: '*Desculpe!* Não encontramos máquinas que atendam a sua solicitação no momento.'
+      // Detect intent using AI
+      const intent = await intentService.analyzeIntent(text, context);
+      console.log('Detected intent:', intent);
+
+      // Generate contextual response
+      let response;
+      if (intent === 'GREETING') {
+        response = {
+          message: `Oi, tudo bem? Sou Júlia, do Grupo Souza Café! Temos várias opções de máquinas de café ideais para empresas. Para qual CEP você deseja receber uma cotação?`
         };
+      } else if (intent === 'MACHINE_PRICE_INQUIRY') {
+        const requirements = this.extractRequirements(text);
+        response = await coffeeAgentService.getMachineRecommendation(requirements, context);
+      } else {
+        response = await intentService.generateContextualResponse(intent, text, context);
       }
 
-      // Generate a response based on available machines
-      const responseMessage = machines.map(machine => `- ${machine.name}: R$ ${machine.rentalPrice}/mês`).join('\n');
-      await evolutionApi.sendMessage(this.instanceId, from, `Aqui estão as máquinas disponíveis:\n${responseMessage}`);
+      console.log('Generated response:', response);
+
+      // Add assistant response to conversation history
+      await conversationService.addAssistantMessage(
+        userId,
+        response.message,
+        response.mediaUrls ? 'image' : 'text',
+        response.mediaUrls ? response.mediaUrls[0] : null
+      );
+
+      // Send response
+      await evolutionApi.sendMessage(this.instanceId, from, response.message);
+
+      if (response.mediaUrls && response.mediaUrls.length > 0) {
+        for (const mediaUrl of response.mediaUrls) {
+          await evolutionApi.sendMedia(this.instanceId, from, mediaUrl);
+        }
+      }
 
       return res.status(200).json({ success: true });
     } catch (error) {
