@@ -125,7 +125,9 @@ class CoffeeAgentController {
       // Use NLP to analyze the text
       const doc = compromise(text);
       const intent = doc.match('#Greeting').found ? 'GREETING' : 
-                     doc.match('#MachinePriceInquiry').found ? 'MACHINE_PRICE_INQUIRY' : 
+                     doc.match('#MachinePriceInquiry').found ? 'MACHINE_PRICE_INQUIRY' :
+                     doc.match('#ProductFeatures').found ? 'PRODUCT_FEATURES' :
+                     doc.match('#AvailabilityInquiry').found ? 'AVAILABILITY_INQUIRY' :
                      'UNKNOWN';
 
       console.log('Detected intent:', intent);
@@ -148,6 +150,14 @@ class CoffeeAgentController {
             message: '*Desculpe!* Não encontramos máquinas que atendam a sua solicitação no momento.'
           };
         }
+      } else if (intent === 'PRODUCT_FEATURES') {
+        response = {
+          message: "Nossas máquinas de café oferecem uma variedade de recursos, incluindo opções de personalização, eficiência energética e facilidade de uso. Como posso ajudar você a escolher a melhor máquina?"
+        };
+      } else if (intent === 'AVAILABILITY_INQUIRY') {
+        response = {
+          message: "Atualmente, temos várias máquinas disponíveis. Você gostaria de saber mais sobre alguma específica?"
+        };
       } else {
         response = {
           message: "Desculpe, não entendi sua solicitação. Poderia reformular?"
