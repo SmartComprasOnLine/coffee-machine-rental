@@ -128,7 +128,7 @@ class CoffeeAgentController {
                      doc.match('#MachinePriceInquiry').found ? 'MACHINE_PRICE_INQUIRY' :
                      doc.match('#ProductFeatures').found ? 'PRODUCT_FEATURES' :
                      doc.match('#AvailabilityInquiry').found ? 'AVAILABILITY_INQUIRY' :
-                     doc.match('alugar').found || doc.match('informações').found ? 'RENTAL_INQUIRY' :
+                     doc.match('alugar').found || doc.match('informações').found || doc.match('mais sobre').found ? 'RENTAL_INQUIRY' :
                      'UNKNOWN';
 
       console.log('Detected intent:', intent);
