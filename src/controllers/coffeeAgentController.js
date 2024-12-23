@@ -128,6 +128,7 @@ class CoffeeAgentController {
                      doc.match('#MachinePriceInquiry').found ? 'MACHINE_PRICE_INQUIRY' :
                      doc.match('#ProductFeatures').found ? 'PRODUCT_FEATURES' :
                      doc.match('#AvailabilityInquiry').found ? 'AVAILABILITY_INQUIRY' :
+                     doc.match('alugar').found || doc.match('informações').found ? 'RENTAL_INQUIRY' :
                      'UNKNOWN';
 
       console.log('Detected intent:', intent);
@@ -157,6 +158,10 @@ class CoffeeAgentController {
       } else if (intent === 'AVAILABILITY_INQUIRY') {
         response = {
           message: "Atualmente, temos várias máquinas disponíveis. Você gostaria de saber mais sobre alguma específica?"
+        };
+      } else if (intent === 'RENTAL_INQUIRY') {
+        response = {
+          message: "Claro! Temos várias opções de máquinas para aluguel. Que tipo de máquina você está procurando?"
         };
       } else {
         response = {
